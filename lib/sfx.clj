@@ -119,9 +119,11 @@
         (swap! parts conj gap-file)))
     ;; Concatenate all elements
     (apply sox (concat @parts [(tmp "modem_raw")]))
-    ;; Trim to duration, lowpass to keep everything soft
+    ;; Trim to duration, filter and push back into the distance
     (sox (tmp "modem_raw") output-file "trim" "0" (str duration)
-         "lowpass" "800" "norm")
+         "lowpass" "600" "lowpass" "600"
+         "reverb" "50" "80" "90" "40"
+         "gain" "-12" "norm" "-12")
     ;; Cleanup
     (doseq [i (range element-count)]
       (.delete (io/file (tmp (str "modem_el_" i))))
