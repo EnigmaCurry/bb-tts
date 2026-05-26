@@ -302,16 +302,18 @@
 
 (if render-file
   (do
-    (let [voices-file (str tmpdir "/babel_voices.wav")
-          intro-file (str tmpdir "/babel_intro.wav")]
-      (println (str "Rendering to " render-file " ..."))
-      (println (str "Voices temp file: " voices-file))
-      (apply render voices-file (build-story))
-      @(proc/process ["sox" ring-file voices-file render-file]
-                     {:out :inherit :err :inherit})
-      (doseq [f [voices-file intro-file ring-file]]
-        (when (.exists (io/file f)) (.delete (io/file f))))
-      (println (str "Done: " render-file))))
+    (println (str "Rendering to " render-file " ..."))
+    ;; Render without sox effects (telephone filter is for live playback only)
+    (binding [tts/*sox-effects* nil]
+      (let [voices-file (str tmpdir "/babel_voices.wav")]
+        (println (str "Voices temp file: " voices-file))
+        (apply render voices-file (build-story))
+        (println "Concatenating ringtone + voices...")
+        @(proc/process ["sox" ring-file voices-file render-file]
+                       {:out :inherit :err :inherit})
+        (doseq [f [voices-file ring-file]]
+          (when (.exists (io/file f)) (.delete (io/file f))))
+        (println (str "Done: " render-file)))))
   (do
     (println "=== Babel ===\n")
     @(proc/process ["paplay" ring-file] {:out :inherit :err :inherit})
