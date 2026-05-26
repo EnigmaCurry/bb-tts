@@ -120,10 +120,32 @@
     ;; Concatenate all elements
     (apply sox (concat @parts [(tmp "modem_raw")]))
     ;; Trim to duration, filter and push back into the distance
-    (sox (tmp "modem_raw") output-file "trim" "0" (str duration)
+    (sox (tmp "modem_raw") (tmp "modem_filtered") "trim" "0" (str duration)
          "lowpass" "350" "lowpass" "350"
          "reverb" "50" "80" "90" "40"
          "gain" "-12" "norm" "-12")
+    ;; Generate evolving radio static — brown noise with slow tremolo,
+    ;; filtered low, panned gently
+    (sox "-n" "-r" r "-c" "1" (tmp "static_1")
+         "synth" (str duration) "brownnoise"
+         "tremolo" "0.15" "60"
+         "lowpass" "400" "lowpass" "400"
+         "gain" "-20")
+    (sox "-n" "-r" r "-c" "1" (tmp "static_2")
+         "synth" (str duration) "pinknoise"
+         "tremolo" "0.07" "70"
+         "lowpass" "500" "lowpass" "300"
+         "gain" "-22")
+    ;; Pan the two static layers slightly apart
+    (sox (tmp "static_1") (tmp "static_1s") "remix" "1v0.6" "1v0.4")
+    (sox (tmp "static_2") (tmp "static_2s") "remix" "1v0.4" "1v0.6")
+    ;; Mix static layers together
+    (sox "-m" (tmp "static_1s") (tmp "static_2s") (tmp "static_mix") "norm" "-18")
+    ;; Mix FT8 + static
+    (sox "-m" (tmp "modem_filtered") (tmp "static_mix") output-file)
+    ;; Cleanup static
+    (doseq [s ["modem_filtered" "static_1" "static_2" "static_1s" "static_2s" "static_mix"]]
+      (.delete (io/file (tmp s))))
     ;; Cleanup
     (doseq [i (range element-count)]
       (.delete (io/file (tmp (str "modem_el_" i))))
