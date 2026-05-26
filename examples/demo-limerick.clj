@@ -69,7 +69,7 @@
 
    ["The last voice stepped up to the stage,"
     "To deliver the final front page,"
-    "With a flourish and bow,"
+    "With a flourish and a boww,"
     "She said, that's all for now,"
     "And she exited, closing the page!"]])
 
