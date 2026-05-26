@@ -58,6 +58,67 @@
     (doseq [f ring-files] (.delete (io/file f)))
     output-file))
 
+;; --- Binaural Beats ---
+;; Generates binaural beats by playing slightly different frequencies
+;; in left and right channels. The brain perceives the difference
+;; as a pulsing beat at the difference frequency.
+;;
+;; Beat frequency ranges:
+;;   Delta  (0.5-4 Hz)  — deep sleep, meditation
+;;   Theta  (4-8 Hz)    — relaxation, creativity
+;;   Alpha  (8-13 Hz)   — calm focus
+;;   Beta   (13-30 Hz)  — alertness, concentration
+;;
+;; :carrier     — base frequency in Hz (default 150)
+;; :beat-freq   — binaural beat frequency in Hz (default 6, theta)
+;; :carrier2    — optional second carrier for layered beats
+;; :beat-freq2  — beat frequency for second layer
+;; :gain        — output gain in dB (default -12)
+;; :tremolo     — optional slow amplitude modulation rate in Hz
+
+(defn generate-binaural
+  "Generate a binaural beats WAV file."
+  [output-file duration & {:keys [carrier beat-freq carrier2 beat-freq2
+                                  gain tremolo]
+                           :or {carrier 150 beat-freq 6 gain -12}}]
+  (let [r (str *rate*)
+        dur (str duration)
+        freq-l carrier
+        freq-r (+ carrier beat-freq)]
+    ;; Left channel
+    (sox "-n" "-r" r "-c" "1" (tmp "bin_left")
+         "synth" dur "sine" (str freq-l))
+    ;; Right channel
+    (sox "-n" "-r" r "-c" "1" (tmp "bin_right")
+         "synth" dur "sine" (str freq-r))
+    ;; Optional second layer
+    (when (and carrier2 beat-freq2)
+      (let [freq-l2 carrier2
+            freq-r2 (+ carrier2 beat-freq2)]
+        (sox "-n" "-r" r "-c" "1" (tmp "bin_left2")
+             "synth" dur "sine" (str freq-l2))
+        (sox "-n" "-r" r "-c" "1" (tmp "bin_right2")
+             "synth" dur "sine" (str freq-r2))
+        ;; Mix layers per channel
+        (sox "-m" (tmp "bin_left") (tmp "bin_left2") (tmp "bin_left_mix"))
+        (sox "-m" (tmp "bin_right") (tmp "bin_right2") (tmp "bin_right_mix"))
+        (sox (tmp "bin_left_mix") (tmp "bin_left"))
+        (sox (tmp "bin_right_mix") (tmp "bin_right"))
+        (doseq [s ["bin_left2" "bin_right2" "bin_left_mix" "bin_right_mix"]]
+          (.delete (io/file (tmp s))))))
+    ;; Merge to stereo
+    (sox "-M" (tmp "bin_left") (tmp "bin_right") (tmp "bin_stereo")
+         "remix" "1" "2")
+    ;; Apply optional tremolo, fade, and gain
+    (apply sox (tmp "bin_stereo") output-file
+           (concat
+             (when tremolo ["tremolo" (str tremolo)])
+             ["fade" "3" dur "3" "gain" (str gain)]))
+    ;; Cleanup
+    (doseq [s ["bin_left" "bin_right" "bin_stereo"]]
+      (.delete (io/file (tmp s))))
+    output-file))
+
 ;; --- Modem ---
 ;; FT8-style frequency-hopping modulated tones, panned left/right
 ;; as a sub-vocal data exchange between two channels.

@@ -235,9 +235,9 @@
 (println "Generating ringtone...")
 (sfx/generate-ringtone 2 ring-file)
 
-(println "Generating modem soundscape...")
-(sfx/generate-modem 60 bg-file
-  :element-count 24 :gap-min 0.5 :gap-max 3.0)
+(println "Generating binaural beats...")
+(sfx/generate-binaural bg-file 60
+  :carrier 150 :beat-freq 6 :gain -18)
 
 (if render-file
   (do
@@ -266,7 +266,7 @@
       (println (str "Done: " render-file))))
   (do
     (println "=== Babel ===\n")
-    ;; Play ringtone first, then start modem + voices together
+    ;; Play ringtone first, then start binaural + voices together
     @(proc/process ["paplay" ring-file] {:out :inherit :err :inherit})
     (def bg-player (proc/process
                      ["bash" "-c"
