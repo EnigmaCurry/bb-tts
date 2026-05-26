@@ -10,7 +10,8 @@
          '[babashka.process :as proc]
          '[clojure.java.io :as io])
 
-(def render-file (first *command-line-args*))
+(def render-file (when-let [f (first *command-line-args*)]
+                   (.getAbsolutePath (io/file f))))
 
 ;; --- Glossolalia generator (from incantation dialect) ---
 
