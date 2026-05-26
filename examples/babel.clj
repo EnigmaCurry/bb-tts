@@ -32,8 +32,23 @@
 (defn gword []
   (apply str (repeatedly (inc (rand-int 3)) syllable)))
 
+(def pair-endings
+  ["ah" "en" "oth" "ul" "een" "az" "im" "esh" "oon" "ik" "el" "um"])
+
+(defn gpair
+  "Generate a root word with two different endings, like near-cognates."
+  []
+  (let [root (apply str (repeatedly (inc (rand-int 2)) syllable))
+        [e1 e2] (take 2 (shuffle pair-endings))]
+    (str root e1 " " root e2)))
+
 (defn gphrase [n]
-  (clojure.string/join " " (repeatedly n gword)))
+  (clojure.string/join " "
+    (mapcat (fn [_]
+              (if (< (rand) 0.3)
+                [(gpair)]
+                [(gword)]))
+            (range n))))
 
 ;; --- English word pools (from madlibs phraseology) ---
 
