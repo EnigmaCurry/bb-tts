@@ -223,8 +223,8 @@
 ;; --- Main ---
 
 (ensure-server)
-;; Telephone bandpass on voices
-(alter-var-root #'*sox-effects* (constantly ["sinc" "300-3400"]))
+;; Telephone bandpass on voices + slow down with pitch shift
+(alter-var-root #'*sox-effects* (constantly ["speed" "0.85" "sinc" "300-3400"]))
 ;; Slowest speed for all voices
 (alter-var-root #'*speed* (constantly 0.7))
 
