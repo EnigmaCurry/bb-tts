@@ -47,7 +47,7 @@
         ring-files (mapv (fn [i]
                            (let [f (tmp (str "ring_" i))]
                              ;; 2s dual-tone ring
-                             (sox "-n" "-r" r "-c" "1" f
+                             (sox "-n" "-r" r "-c" "2" f
                                   "synth" "2" "sine" "440" "sine" "480"
                                   "gain" "-6"
                                   "pad" "0" "3")
