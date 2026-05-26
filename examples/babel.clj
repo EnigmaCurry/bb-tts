@@ -238,20 +238,17 @@
 (def ring-file (str tmpdir "/babel_ring.wav"))
 (def bg-file (str tmpdir "/babel_bg.wav"))
 
-;; Estimate voice duration generously — each section averages ~8s of speech
-;; plus pauses. 15 sections × 8s ≈ 120s, pad to 180s to err long.
-(def estimated-duration 180)
-
 (println "Generating ringtone...")
 (sfx/generate-ringtone 2 ring-file)
 
 (println "Generating modem soundscape...")
-(let [modem-file (sfx/generate-modem estimated-duration (sfx/tmp "babel_modem")
-                   :element-count (int (* estimated-duration 0.4))
+(let [loop-dur 60
+      modem-file (sfx/generate-modem loop-dur (sfx/tmp "babel_modem")
+                   :element-count (int (* loop-dur 0.4))
                    :gap-min 0.5 :gap-max 3.0)]
   (sfx/mix [[modem-file -8]]
            bg-file
-           :fade-in 2 :fade-out 4 :duration estimated-duration :gain -4)
+           :fade-in 2 :fade-out 2 :duration loop-dur :gain -4)
   (.delete (io/file modem-file)))
 
 (if render-file
@@ -262,16 +259,27 @@
       (apply render voices-file (build-story))
       @(proc/process ["sox" ring-file voices-file intro-file]
                      {:out :inherit :err (io/file "/dev/null")})
-      (println "Mixing voices with background...")
-      @(proc/process ["sox" "-m" intro-file bg-file render-file "norm"]
-                     {:out :inherit :err (io/file "/dev/null")})
+      ;; Loop bg to match intro duration
+      (let [intro-dur (Double/parseDouble
+                        (clojure.string/trim
+                          (:out @(proc/process ["sox" "--info" "-D" intro-file]
+                                              {:out :string}))))
+            bg-looped (str tmpdir "/babel_bg_loop.wav")
+            repeats (max 0 (int (Math/ceil (/ intro-dur 60))))]
+        (println "Mixing voices with background...")
+        @(proc/process ["sox" bg-file bg-looped "repeat" (str repeats)
+                        "trim" "0" (str intro-dur) "fade" "0" (str intro-dur) "4"]
+                       {:out :inherit :err (io/file "/dev/null")})
+        @(proc/process ["sox" "-m" intro-file bg-looped render-file "norm"]
+                       {:out :inherit :err (io/file "/dev/null")})
+        (.delete (io/file bg-looped)))
       (doseq [f [voices-file intro-file ring-file bg-file]]
         (.delete (io/file f)))
       (println (str "Done: " render-file))))
   (do
     (println "=== Babel ===\n")
-    (def bg-player (proc/process ["paplay" bg-file]
-                                 {:out :inherit :err :inherit}))
+    (def bg-player (proc/process ["sox" bg-file "-t" "pulseaudio" "" "repeat" "100"]
+                                 {:out :inherit :err (io/file "/dev/null")}))
     ;; Play ringtone, then stream voices live
     @(proc/process ["paplay" ring-file] {:out :inherit :err :inherit})
     (apply perform (build-story))
