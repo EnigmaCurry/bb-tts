@@ -1,27 +1,39 @@
 #!/usr/bin/env bb
 
-;; Reads 100 random words from the system dictionary and speaks them.
+;; Reads 100 random words from the dictionary and speaks them.
 
 (require '[tts :refer [perform say M1 M2 M3 M4 M5 F1 F2 F3 F4 F5
-                       ensure-server *server*]]
+                       ensure-server]]
          '[clojure.java.io :as io]
          '[babashka.process :as proc])
 
-(def dict-paths ["/usr/share/dict/words"
-                 "/run/current-system/sw/share/dict/words"
-                 "/nix/var/nix/profiles/default/share/dict/words"])
+(def dict-paths
+  ["/usr/share/dict/words"
+   ;; scowl from nix
+   (some #(when (.exists (io/file %)) %)
+         (map #(str % "/share/scowl/english-words.20")
+              (clojure.string/split (or (System/getenv "PATH") "") #":")))
+   ;; try to find scowl in the nix store
+   (first (filter #(.exists (io/file %))
+                  (map #(str % "/share/scowl/english-words.20")
+                       (clojure.string/split (or (System/getenv "XDG_DATA_DIRS") "") #":"))))])
 
 (defn find-dict []
-  (or (first (filter #(.exists (io/file %)) dict-paths))
+  (or (first (filter some? (map #(when (and % (.exists (io/file %))) %) dict-paths)))
+      ;; Last resort: glob the nix store for scowl
+      (first (filter #(.exists (io/file %))
+                     (->> (.listFiles (io/file "/nix/store"))
+                          (filter #(re-find #"scowl" (.getName %)))
+                          (map #(str % "/share/scowl/english-words.20")))))
       (do (binding [*out* *err*]
-            (println "No dictionary found. Install words package."))
+            (println "No dictionary found. Run inside 'nix develop' or install scowl."))
           (System/exit 1))))
 
 (def voices [M1 M2 M3 M4 M5 F1 F2 F3 F4 F5])
 
 (let [words (->> (slurp (find-dict))
                  clojure.string/split-lines
-                 (filter #(> (count %) 3))
+                 (filter #(re-matches #"[a-z]{4,}" %))
                  shuffle
                  (take 100))
       voice-cycle (cycle voices)]

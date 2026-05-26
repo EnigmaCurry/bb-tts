@@ -36,6 +36,7 @@
           self.packages.${system}.default
           pkgs.babashka
           supertonic-serve
+          pkgs.scowl
         ];
       };
     };
