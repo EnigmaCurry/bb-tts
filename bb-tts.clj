@@ -49,8 +49,8 @@
     (proc/process ["supertonic-serve"
                    "--host" (:host opts)
                    "--port" (str (:port opts))]
-                  {:out (if @debug? :inherit "/dev/null")
-                   :err (if @debug? :inherit "/dev/null")})
+                  {:out (if @debug? :inherit (io/file "/dev/null"))
+                   :err (if @debug? :inherit (io/file "/dev/null"))})
     (loop [attempts 60]
       (cond
         (health opts)   true
