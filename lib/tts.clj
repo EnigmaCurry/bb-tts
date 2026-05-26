@@ -30,6 +30,9 @@
 ;; Reverb settings: [reverberance hf-damping room-scale stereo-depth]
 ;; nil = no reverb. E.g. [30 50 80 40] for light room.
 (def ^:dynamic *reverb* nil)
+;; Extra sox effects applied to voice output (vector of sox arg strings).
+;; nil = no effects. E.g. ["sinc" "300-3400"] for telephone bandpass.
+(def ^:dynamic *sox-effects* nil)
 
 (def http-client (http/client {:version :http1.1}))
 
@@ -400,25 +403,32 @@
     (io/copy result (io/file output-file))
     output-file))
 
+(defn- sox-effect-args
+  "Build sox effect arguments from *reverb* and *sox-effects*."
+  []
+  (let [reverb-args (when *reverb*
+                      (let [[rev hf room stereo] *reverb*]
+                        ["reverb" (str rev) (str hf) (str room) (str stereo)]))
+        extra-args  (when *sox-effects* (vec *sox-effects*))]
+    (into (vec (or reverb-args [])) (or extra-args []))))
+
 (defn render
   "Synthesize all segments and write to a WAV file.
-   Optionally applies reverb if *reverb* is set."
+   Optionally applies reverb/*sox-effects* if set."
   [output-file & segments]
   (ensure-server)
   (let [chunks (synthesize-all segments)
-        raw-file (str output-file ".raw")]
-    (if *reverb*
-      (let [[rev hf room stereo] *reverb*
-            ;; Write raw PCM, process with sox for reverb, output WAV
-            tmp-raw (java.io.File/createTempFile "bb-tts-render-" ".raw")]
+        fx (sox-effect-args)]
+    (if (seq fx)
+      (let [tmp-raw (java.io.File/createTempFile "bb-tts-render-" ".raw")]
         (.deleteOnExit tmp-raw)
         (with-open [out (io/output-stream tmp-raw)]
           (doseq [^bytes chunk chunks]
             (.write out chunk)))
-        @(proc/process ["sox"
-                        "-t" "raw" "-r" "44100" "-c" "2" "-e" "signed" "-b" "16" (str tmp-raw)
-                        output-file
-                        "reverb" (str rev) (str hf) (str room) (str stereo)]
+        @(proc/process (into ["sox"
+                              "-t" "raw" "-r" "44100" "-c" "2" "-e" "signed" "-b" "16" (str tmp-raw)
+                              output-file]
+                             fx)
                        {:out :inherit :err (io/file "/dev/null")})
         (.delete tmp-raw))
       (write-wav-file chunks output-file))
@@ -443,13 +453,13 @@
                        (.put queue (synthesize-seg seg)))
                      (finally
                        (.put queue ::done))))
-        ;; Start playback pipeline — optionally through sox for reverb
-        player (if *reverb*
-                 (let [[rev hf room stereo] *reverb*
-                       sox-proc (proc/process
-                                  ["sox" "-t" "raw" "-r" "44100" "-c" "2" "-e" "signed" "-b" "16" "-"
-                                   "-t" "raw" "-r" "44100" "-c" "2" "-e" "signed" "-b" "16" "-"
-                                   "reverb" (str rev) (str hf) (str room) (str stereo)]
+        ;; Start playback pipeline — optionally through sox for effects
+        fx (sox-effect-args)
+        player (if (seq fx)
+                 (let [sox-proc (proc/process
+                                  (into ["sox" "-t" "raw" "-r" "44100" "-c" "2" "-e" "signed" "-b" "16" "-"
+                                         "-t" "raw" "-r" "44100" "-c" "2" "-e" "signed" "-b" "16" "-"]
+                                        fx)
                                   {:in :pipe :out :pipe :err (io/file "/dev/null")})
                        paplay (proc/process
                                 ["paplay" "--raw" "--format=s16le" "--rate=44100" "--channels=2"]
@@ -458,7 +468,7 @@
                  (proc/process ["paplay" "--raw" "--format=s16le"
                                 "--rate=44100" "--channels=2"]
                                {:in :pipe :out :inherit :err :inherit}))
-        out (if *reverb*
+        out (if (seq fx)
               (.getOutputStream (:proc (:sox player)))
               (.getOutputStream (:proc player)))]
     ;; Consumer: write PCM chunks to paplay as they arrive
@@ -471,7 +481,7 @@
             (recur))))
       (finally
         (.close out)
-        (if *reverb*
+        (if (seq fx)
           (do @(:sox player) @(:paplay player))
           @player)
         @producer))))

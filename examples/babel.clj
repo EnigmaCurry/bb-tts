@@ -5,7 +5,7 @@
 ;; as if telling a story in a pidgin tongue over a droning soundscape.
 
 (require '[tts :refer [perform render say pause laugh breath sigh
-                       M3 F4 with-speed ensure-server]]
+                       M3 F4 with-speed ensure-server *sox-effects*]]
          '[sfx :as sfx]
          '[babashka.process :as proc]
          '[clojure.java.io :as io])
@@ -221,6 +221,8 @@
 ;; --- Main ---
 
 (ensure-server)
+;; Telephone bandpass filter on voices (300-3400 Hz)
+(alter-var-root #'*sox-effects* (constantly ["sinc" "300-3400"]))
 
 (def duration 120)
 (def bg-file (str (System/getProperty "java.io.tmpdir") "/babel_bg.wav"))
