@@ -27,7 +27,7 @@
         serve = supertonic-serve;
         demo = pkgs.writeShellScriptBin "bb-tts-demo" ''
           export PATH="${supertonic-serve}/bin:$PATH"
-          exec ${pkgs.babashka}/bin/bb -cp ${lib} ${./examples/demo.clj} "$@"
+          exec ${pkgs.babashka}/bin/bb -cp ${lib} ${./examples/demo-limerick.clj} "$@"
         '';
       };
 
