@@ -72,19 +72,43 @@
 (def ^:dynamic *speed* 1.0)
 (def ^:dynamic *lang* "en")
 
-;; Expression tags
+;; Expression tags — return strings that get joined into segment text
 (defn laugh  [] "<laugh>")
 (defn breath [] "<breath>")
 (defn sigh   [] "<sigh>")
-(defn pause  [seconds] (str "<silence " seconds ">"))
 
-;; Voice constructors — each returns a function that builds segments
+;; Pause — returns a special segment with silence duration
+(defn pause [seconds]
+  {:type :pause :seconds seconds})
+
+;; Voice constructors — each returns a function that builds segments.
+;; Parts can be strings, expression tag fns, or pause segments.
+;; Pauses split the text into separate speech segments with a pause between.
+(defn- build-segments [voice lang speed parts]
+  (let [resolved (map #(cond (fn? %)  (%)
+                             (string? %) %
+                             :else %)
+                      parts)]
+    (loop [remaining resolved
+           current-text []
+           result []]
+      (if (empty? remaining)
+        (if (seq current-text)
+          (conj result {:voice voice :lang lang :speed speed
+                        :text (clojure.string/join " " current-text)})
+          result)
+        (let [part (first remaining)]
+          (if (and (map? part) (= :pause (:type part)))
+            (let [segs (if (seq current-text)
+                         (conj result {:voice voice :lang lang :speed speed
+                                       :text (clojure.string/join " " current-text)})
+                         result)]
+              (recur (rest remaining) [] (conj segs part)))
+            (recur (rest remaining) (conj current-text part) result)))))))
+
 (defn- make-voice [name]
   (fn [& parts]
-    {:voice name
-     :lang  *lang*
-     :speed *speed*
-     :text  (clojure.string/join " " (map #(if (fn? %) (%) %) parts))}))
+    (build-segments name *lang* *speed* parts)))
 
 (def M1 (make-voice "M1"))
 (def M2 (make-voice "M2"))
@@ -98,27 +122,20 @@
 (def F5 (make-voice "F5"))
 
 (defn say
-  "Build a segment. First arg can be a voice fn or uses *voice*."
+  "Build segments. First arg can be a voice fn or uses *voice*."
   [voice-or-text & parts]
   (if (fn? voice-or-text)
     (apply voice-or-text parts)
-    {:voice *voice*
-     :lang  *lang*
-     :speed *speed*
-     :text  (clojure.string/join " " (map #(if (fn? %) (%) %)
-                                          (cons voice-or-text parts)))}))
+    (build-segments *voice* *lang* *speed* (cons voice-or-text parts))))
 
-(defn with-voice [voice & segments]
-  (binding [*voice* voice]
-    (vec (flatten segments))))
+(defmacro with-voice [voice & body]
+  `(binding [*voice* ~voice] (vec (flatten (list ~@body)))))
 
-(defn with-speed [speed & segments]
-  (binding [*speed* speed]
-    (vec (flatten segments))))
+(defmacro with-speed [speed & body]
+  `(binding [*speed* ~speed] (vec (flatten (list ~@body)))))
 
-(defn with-lang [lang & segments]
-  (binding [*lang* lang]
-    (vec (flatten segments))))
+(defmacro with-lang [lang & body]
+  `(binding [*lang* ~lang] (vec (flatten (list ~@body)))))
 
 (defn dialog
   "Takes segment maps and returns them as a flat sequence."
@@ -208,15 +225,59 @@
     @(proc/process ["paplay" (str tmp)])
     (.delete tmp)))
 
+(defn- silence-bytes
+  "Generate raw PCM silence (16-bit, 44100Hz mono) for given seconds."
+  [seconds]
+  (byte-array (int (* 44100 2 seconds))))
+
+(defn- seg->wav
+  "Convert a segment to WAV bytes. Pauses become raw PCM silence."
+  [seg]
+  (if (= :pause (:type seg))
+    (silence-bytes (:seconds seg))
+    (synthesize seg)))
+
 (defn perform
   "Synthesize all segments, concatenate, then play as one audio clip."
   [& segments]
   (ensure-server)
   (let [segs (flatten segments)
+        ;; Synthesize speech segments, generate silence for pauses
         wavs (mapv (fn [seg]
-                     (when *debug*
+                     (when (and *debug* (:text seg))
                        (binding [*out* *err*]
                          (println (format "[%s] %s" (:voice seg) (:text seg)))))
-                     (synthesize seg))
-                   segs)]
-    (play-wav (concat-wavs wavs))))
+                     (if (= :pause (:type seg))
+                       (silence-bytes (:seconds seg))
+                       (synthesize seg)))
+                   segs)
+        ;; Separate: first real WAV (for header), then collect all PCM
+        first-wav-idx (first (keep-indexed (fn [i seg] (when-not (= :pause (:type seg)) i)) segs))
+        first-wav (nth wavs first-wav-idx)
+        header-size (wav-data-offset first-wav)
+        pcm-chunks (mapv (fn [wav seg]
+                           (if (= :pause (:type seg))
+                             wav ;; already raw PCM
+                             (let [offset (int (wav-data-offset wav))]
+                               (java.util.Arrays/copyOfRange ^bytes wav offset (int (alength ^bytes wav))))))
+                         wavs segs)
+        total-pcm (reduce + (map count pcm-chunks))
+        result (byte-array (+ header-size total-pcm))]
+    ;; Build combined WAV
+    (System/arraycopy first-wav 0 result 0 header-size)
+    (let [riff-size (- (+ header-size total-pcm) 8)]
+      (aset-byte result 4 (unchecked-byte (bit-and riff-size 0xFF)))
+      (aset-byte result 5 (unchecked-byte (bit-and (bit-shift-right riff-size 8) 0xFF)))
+      (aset-byte result 6 (unchecked-byte (bit-and (bit-shift-right riff-size 16) 0xFF)))
+      (aset-byte result 7 (unchecked-byte (bit-and (bit-shift-right riff-size 24) 0xFF))))
+    (let [data-size-offset (- header-size 4)]
+      (aset-byte result data-size-offset (unchecked-byte (bit-and total-pcm 0xFF)))
+      (aset-byte result (+ data-size-offset 1) (unchecked-byte (bit-and (bit-shift-right total-pcm 8) 0xFF)))
+      (aset-byte result (+ data-size-offset 2) (unchecked-byte (bit-and (bit-shift-right total-pcm 16) 0xFF)))
+      (aset-byte result (+ data-size-offset 3) (unchecked-byte (bit-and (bit-shift-right total-pcm 24) 0xFF))))
+    (loop [chunks pcm-chunks offset header-size]
+      (when (seq chunks)
+        (let [^bytes chunk (first chunks)]
+          (System/arraycopy chunk 0 result offset (alength chunk))
+          (recur (rest chunks) (+ offset (alength chunk))))))
+    (play-wav result)))
