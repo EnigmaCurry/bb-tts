@@ -63,8 +63,8 @@
 ;; as a sub-vocal data exchange between two channels.
 
 (def ^:private ft8-freqs
-  "Discrete frequency slots in the 200-800 Hz band (FT8-like)."
-  (mapv #(+ 200 (* % 6.25)) (range 96)))
+  "Discrete frequency slots in the 80-300 Hz band."
+  (mapv #(+ 80 (* % 4.6)) (range 48)))
 
 (defn- generate-ft8-transmission
   "Generate a single FT8-like transmission: a sequence of frequency-hopping
@@ -76,12 +76,12 @@
         slot-dur 0.16
         total-dur (* slot-count slot-dur)
         ;; Pick a base frequency band and hop around it
-        base-idx (+ 10 (rand-int 70))
+        base-idx (+ 5 (rand-int 35))
         slot-files (mapv (fn [s]
                            (let [sf (tmp (str "ft8_slot_" index "_" s))
-                                 ;; Hop within ±8 slots of base
+                                 ;; Hop within ±6 slots of base
                                  freq (nth ft8-freqs
-                                        (max 0 (min 95 (+ base-idx (- (rand-int 17) 8)))))]
+                                        (max 0 (min 47 (+ base-idx (- (rand-int 13) 6)))))]
                              (sox "-n" "-r" r "-c" "1" sf
                                   "synth" (str slot-dur) "sine" (str freq)
                                   "fade" "0.005" (str slot-dur) "0.005")
@@ -89,7 +89,7 @@
                          (range slot-count))
         f (tmp (str "modem_el_" index))]
     ;; Concatenate slots into one transmission, apply lowpass + envelope
-    (apply sox (concat slot-files [f "lowpass" "900" "gain" "-14"
+    (apply sox (concat slot-files [f "lowpass" "350" "gain" "-14"
                                    "fade" "0.03" (str total-dur) "0.03"]))
     (doseq [s (range slot-count)]
       (.delete (io/file (tmp (str "ft8_slot_" index "_" s)))))
@@ -121,7 +121,7 @@
     (apply sox (concat @parts [(tmp "modem_raw")]))
     ;; Trim to duration, filter and push back into the distance
     (sox (tmp "modem_raw") output-file "trim" "0" (str duration)
-         "lowpass" "600" "lowpass" "600"
+         "lowpass" "350" "lowpass" "350"
          "reverb" "50" "80" "90" "40"
          "gain" "-12" "norm" "-12")
     ;; Cleanup
