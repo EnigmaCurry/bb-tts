@@ -190,6 +190,22 @@
   ["-ah" "-en" "-oth" "-ul" "-een" "-az" "-im" "-esh"
    "-oon" "-ik" "-ara" "-eth" "-um" "-osh" "-ani" "-el"])
 
+(defn tablet-entry
+  "Female introduces a root word, male gives all 12 conjugations."
+  []
+  (let [root (apply str (repeatedly (inc (rand-int 2)) syllable))
+        forms (conjugate root 12)
+        ;; Split into groups of 3-4 for natural speech
+        groups (partition-all 4 forms)]
+    (concat
+      (say-b (format "Next entry. The root word is: %s." root))
+      [(pause 0.3)]
+      (mapcat (fn [group]
+                (say-a (str (clojure.string/join ", " group) ".")))
+              groups)
+      [(pause 0.2)]
+      (say-b (format "%s. Noted." root)))))
+
 (defn conjugate
   "Take a root word and produce N conjugated forms."
   [root n]
@@ -236,54 +252,70 @@
 ;; --- Build the story ---
 
 (defn build-story []
-  (let [;; Act 1: Phone pickup and opening — voice B answers, A launches into pidgin
+  (let [;; Act 1: Phone pickup — clandestine contact
         act1 [(fn [] (concat
                        (say-b "Hello?")
                        [(pause 0.4)]
-                       (say-a (format "%s! %s, %s %s!"
-                                (gword) (gword) (gadj) (gnoun)))
-                       (say-b (format "Who is this? What do you %s?"
-                                (gword)))
+                       (say-a "It's me. Are you on a secure line?")
+                       (say-b "Yes. Go ahead.")
                        [(pause 0.3)]
-                       (say-a (format "Listen, the %s %s, it %s the %s."
-                                (gadj) (gnoun) (gverb-now) (gnoun)))
-                       (say-b (format "The %s? %s?"
-                                (gnoun) (gword)))))
-              exchange exchange]
-        ;; Act 2: Rising action — things get weird
-        act2 [rapid-exchange slow-monologue exchange
-              whispered-aside exchange]
-        ;; Act 2.5: Conjugation play — word games in the middle
+                       (say-a "I've been with the tablets all night. The second chamber inscription... it's not what we expected.")
+                       (say-b "What do you mean?")
+                       (say-a (format "There's a whole declension system. Every root has twelve forms. The first root is %s, but it branches into... everything."
+                                (gword)))
+                       (say-b "Twelve forms? Start from the beginning. I'll record.")))]
+        ;; Act 2: Tablet translation — she introduces roots, he conjugates
+        act2 [tablet-entry tablet-entry
+              (fn [] (concat
+                       (say-b "Are you seeing a pattern?")
+                       (say-a (format "Yes. The suffixes map to... %s, %s, %s. Like tense, but also direction. And maybe intent."
+                                (gword) (gword) (gword)))
+                       (say-b "Intent?")))
+              tablet-entry tablet-entry
+              (fn [] (concat
+                       (say-a (format "This one is different. The root %s, it appears on both tablets, but conjugated opposite ways."
+                                (gword)))
+                       (say-b "Read them both.")))]
+        ;; Act 3: Deeper translation — things get strange, more glossolalic
+        act3 [tablet-entry
+              whispered-aside
+              (fn [] (concat
+                       (say-b (format "Wait. That last form, %s, it appeared in the first chamber too."
+                                (gword)))
+                       (say-a (format "Yes! And look, when you combine it with %s..."
+                                (gword)))
+                       (say-b (format "It makes %s %s." (gword) (gword)))
+                       (say-a (format "%s! Exactly." (gword)))))
+              rapid-exchange
+              exchange]
+        ;; Act 4: Conjugation play — they start riffing on each other's words
         act-conj [conjugation-list conjugation-list
                   dueling-conjugations]
-        ;; Act 3: Confrontation — heated and chaotic
-        act3 [argument unison-chant rapid-exchange
+        ;; Act 5: Confrontation — argument over interpretation
+        act5 [argument
               (fn [] (concat
-                       (say-a (format "The %s %s %s %s the %s!"
-                                (gadj) (gnoun) (gadv) (gverb) (gnoun)))
+                       (say-b (format "No, no. The %s form is %s, not %s!"
+                                (gadj) (gword) (gword)))
+                       (say-a (format "I'm telling you, the tablet says %s! The %s %s %s the %s!"
+                                (gword) (gadj) (gnoun) (gverb) (gnoun)))
                        (say-b (laugh))
-                       (say-b (format "%s! %s %s!"
-                                (gword) (gword) (gword)))))]
-        ;; Act 4: Wrapping up — summarizing, winding down
-        act4 [exchange
+                       (say-b (format "%s! You're reading it upside down!" (gword)))))
+              unison-chant rapid-exchange]
+        ;; Act 6: Wrapping up
+        act6 [(fn [] (concat
+                       (say-b "We need to stop. Someone might be listening.")
+                       (say-a (format "One more. The final tablet. Root word: %s." (gword)))
+                       (say-b "Go.")))
+              tablet-entry
               (fn [] (concat
-                       (say-a (format "So, the %s %s %s the %s. %s."
-                                (gadj) (gnoun) (gverb) (gnoun) (gword)))
-                       (say-b (format "Right, right. And the %s %s, it %s."
-                                (gadj) (gnoun) (gword)))
-                       (say-a (format "Exactly. %s %s %s."
-                                (gword) (gword) (gword)))))
-              ;; Act 5: Goodbye
-              (fn [] (concat
-                       (say-b (format "Okay, I have to go. %s %s."
-                                (gword) (gword)))
-                       (say-a (format "Yes, yes. %s. Talk soon."
-                                (gword)))
-                       (say-b (format "%s. Goodbye." (gword)))
+                       (say-a (format "That's it. That's all twelve tablets. %s." (gword)))
+                       (say-b "I have it all. Same time tomorrow?")
+                       (say-a (format "%s. Tomorrow." (gword)))
+                       (say-b "Be careful.")
                        [(pause 0.3)]
-                       (say-a "Goodbye.")
+                       (say-a (gword))
                        [(pause 1.5)]))]
-        all-sections (concat act1 act2 act-conj act3 act4)]
+        all-sections (concat act1 act2 act3 act-conj act5 act6)]
     (vec (mapcat (fn [f] (concat (f) [(pause 0.6)])) all-sections))))
 
 ;; --- Main ---
