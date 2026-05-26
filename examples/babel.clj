@@ -5,7 +5,7 @@
 ;; as if telling a story in a pidgin tongue over a droning soundscape.
 
 (require '[tts :refer [perform render say pause laugh breath sigh
-                       M3 F4 with-speed ensure-server *sox-effects* *speed*]]
+                       M3 F4 ensure-server *sox-effects*]]
          '[sfx :as sfx]
          '[babashka.process :as proc]
          '[clojure.java.io :as io])
@@ -320,21 +320,14 @@
 ;; --- Main ---
 
 (ensure-server)
-;; Telephone bandpass on voices + slow down with pitch shift
-(alter-var-root #'*sox-effects* (constantly ["speed" "0.85" "sinc" "300-3400"]))
-;; Slowest speed for all voices
-(alter-var-root #'*speed* (constantly 0.7))
+;; Telephone bandpass on voices
+(alter-var-root #'*sox-effects* (constantly ["sinc" "300-3400"]))
 
 (def tmpdir (System/getProperty "java.io.tmpdir"))
 (def ring-file (str tmpdir "/babel_ring.wav"))
-(def bg-file (str tmpdir "/babel_bg.wav"))
 
 (println "Generating ringtone...")
 (sfx/generate-ringtone 2 ring-file)
-
-(println "Generating binaural beats...")
-(sfx/generate-binaural bg-file 60
-  :carrier 150 :beat-freq 6 :gain -18)
 
 (if render-file
   (do
@@ -342,36 +335,13 @@
     (let [voices-file (str tmpdir "/babel_voices.wav")
           intro-file (str tmpdir "/babel_intro.wav")]
       (apply render voices-file (build-story))
-      @(proc/process ["sox" ring-file voices-file intro-file]
+      @(proc/process ["sox" ring-file voices-file render-file]
                      {:out :inherit :err (io/file "/dev/null")})
-      ;; Loop bg to match intro duration
-      (let [intro-dur (Double/parseDouble
-                        (clojure.string/trim
-                          (:out @(proc/process ["sox" "--info" "-D" intro-file]
-                                              {:out :string}))))
-            bg-looped (str tmpdir "/babel_bg_loop.wav")
-            repeats (max 0 (int (Math/ceil (/ intro-dur 60))))]
-        (println "Mixing voices with background...")
-        @(proc/process ["sox" bg-file bg-looped "repeat" (str repeats)
-                        "trim" "0" (str intro-dur) "fade" "0" (str intro-dur) "4"]
-                       {:out :inherit :err (io/file "/dev/null")})
-        @(proc/process ["sox" "-m" intro-file bg-looped render-file "norm"]
-                       {:out :inherit :err (io/file "/dev/null")})
-        (.delete (io/file bg-looped)))
-      (doseq [f [voices-file intro-file ring-file bg-file]]
-        (.delete (io/file f)))
+      (doseq [f [voices-file intro-file ring-file]]
+        (when (.exists (io/file f)) (.delete (io/file f))))
       (println (str "Done: " render-file))))
   (do
     (println "=== Babel ===\n")
-    ;; Play ringtone first, then start binaural + voices together
     @(proc/process ["paplay" ring-file] {:out :inherit :err :inherit})
-    (def bg-player (proc/process
-                     ["bash" "-c"
-                      (str "sox " bg-file " -t raw -r 44100 -c 2 -e signed -b 16 - repeat 100"
-                           " | paplay --raw --format=s16le --rate=44100 --channels=2")]
-                     {:out :inherit :err (io/file "/dev/null")}))
     (apply perform (build-story))
-    (future (Thread/sleep 3000) (.destroy (:proc bg-player)))
-    @bg-player
-    (doseq [f [ring-file bg-file]]
-      (.delete (io/file f)))))
+    (.delete (io/file ring-file))))
