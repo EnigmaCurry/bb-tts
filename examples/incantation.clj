@@ -1,10 +1,14 @@
 #!/usr/bin/env bb
 
-;; Pure glossolalia ritual — two voices, M5 and F5.
-;; Oscillates between rapid dialog, repetition, and monologue.
+;; Pure glossolalia ritual with fire, birds, drone, and drums.
+;; Two voices (M5 and F5) panned left/right over a soundscape.
 
-(require '[tts :refer [perform say pause
-                       M5 F5 with-speed]])
+(require '[tts :refer [perform say pause M5 F5 with-speed ensure-server]]
+         '[sfx :as sfx]
+         '[babashka.process :as proc]
+         '[clojure.java.io :as io])
+
+;; --- Glossolalia generator ---
 
 (def onsets
   ["z" "k" "th" "v" "sh" "d" "g" "b" "m" "kh"
@@ -22,68 +26,91 @@
   (str (rand-nth onsets) (rand-nth vowels) (rand-nth endings)))
 
 (defn gword []
-  (let [n (inc (rand-int 3))]
-    (apply str (repeatedly n syllable))))
+  (apply str (repeatedly (inc (rand-int 3)) syllable)))
 
 (defn phrase [n]
   (clojure.string/join " " (repeatedly n gword)))
 
-;; --- Section generators ---
+;; --- Speech sections with panning ---
 
-(defn rapid-dialog
-  "Quick back-and-forth, short phrases."
-  []
-  (let [pairs (+ 4 (rand-int 4))]
-    (with-speed 1.15
-      (mapcat (fn [_]
-                [(say M5 (phrase (+ 1 (rand-int 2))))
-                 (say F5 (phrase (+ 1 (rand-int 2))))])
-              (range pairs)))))
+(defn pan-segs [segs pan]
+  (mapv #(if (map? %) (assoc % :pan pan) %) (flatten segs)))
 
-(defn echo-section
-  "One voice says a phrase, the other repeats it."
-  []
+(defn say-m [& parts] (pan-segs (apply say M5 parts) -0.5))
+(defn say-f [& parts] (pan-segs (apply say F5 parts) 0.5))
+
+(defn rapid-dialog []
+  (with-speed 1.15
+    (mapcat (fn [_]
+              (concat (say-m (phrase (+ 1 (rand-int 2))))
+                      (say-f (phrase (+ 1 (rand-int 2))))))
+            (range (+ 4 (rand-int 4))))))
+
+(defn echo-section []
   (let [phrases (repeatedly (+ 3 (rand-int 3)) #(phrase (+ 2 (rand-int 2))))
-        leader (if (< (rand) 0.5) [M5 F5] [F5 M5])]
+        [a b] (if (< (rand) 0.5) [say-m say-f] [say-f say-m])]
     (with-speed 0.85
-      (mapcat (fn [p]
-                [(say (first leader) p)
-                 (say (second leader) p)])
-              phrases))))
+      (mapcat (fn [p] (concat (a p) (b p))) phrases))))
 
-(defn monologue
-  "One voice speaks alone, longer phrases."
-  []
-  (let [voice (rand-nth [M5 F5])
-        lines (+ 4 (rand-int 4))]
+(defn monologue []
+  (let [voice-fn (rand-nth [say-m say-f])]
     (with-speed 0.8
-      (mapv (fn [_] (say voice (phrase (+ 3 (rand-int 3))))) (range lines)))))
+      (vec (mapcat (fn [_] (voice-fn (phrase (+ 3 (rand-int 3)))))
+                   (range (+ 4 (rand-int 4))))))))
 
-(defn unison
-  "Both voices say the same thing."
-  []
+(defn unison []
   (let [p (phrase 3)]
-    [(say M5 p)
-     (say F5 p)]))
+    (concat (say-m p) (say-f p))))
 
-;; --- Build the ritual ---
+;; --- Main ---
 
-(def sections
-  [rapid-dialog echo-section monologue rapid-dialog
-   echo-section monologue rapid-dialog unison])
+(ensure-server)
+
+(def duration 150)
+(def bg-file (str (System/getProperty "java.io.tmpdir") "/ritual_bg.wav"))
+
+(println "Generating soundscape...")
+(let [fire-file (sfx/generate-fire duration (sfx/tmp "fire_out"))
+      birds-file (sfx/generate-birds duration (sfx/tmp "birds_out")
+                   :rest-min 5 :rest-max 15 :phrase-count 15)
+      drone-file (sfx/generate-drone duration (sfx/tmp "drone_out")
+                   :pan 0.55)
+      drums-file (sfx/generate-drums duration (sfx/tmp "drums_out"))]
+  (sfx/mix [[fire-file -4]
+            [birds-file -6]
+            [drone-file -3]
+            [drums-file -5]]
+           bg-file
+           :fade-in 3 :fade-out 5 :duration duration)
+  ;; Cleanup individual layers
+  (doseq [f [fire-file birds-file drone-file drums-file]]
+    (.delete (io/file f))))
 
 (println "=== The Ritual ===\n")
 
-(doseq [[i section-fn] (map-indexed vector sections)]
-  (let [segs (section-fn)]
-    (apply perform (concat segs [(pause 0.8)]))))
+;; Start background
+(def bg-player (proc/process ["paplay" bg-file]
+                             {:out :inherit :err :inherit}))
 
-;; Final unison chant
+;; Speech sections
+(def sections
+  [rapid-dialog echo-section monologue rapid-dialog
+   echo-section monologue rapid-dialog echo-section unison])
+
+(doseq [section-fn sections]
+  (apply perform (concat (section-fn) [(pause 0.8)])))
+
+;; Final chant
 (let [w (gword)]
   (perform
     (with-speed 0.7
-      (say M5 (str w ". " w ". " w "."))
-      (say F5 (str w ". " w ". " w "."))
+      (say-m (str w ". " w ". " w "."))
+      (say-f (str w ". " w ". " w "."))
       (pause 0.5)
-      (say M5 w)
-      (say F5 w))))
+      (say-m w)
+      (say-f w))))
+
+;; Let background fade out
+(future (Thread/sleep 5000) (.destroy (:proc bg-player)))
+@bg-player
+(.delete (io/file bg-file))
