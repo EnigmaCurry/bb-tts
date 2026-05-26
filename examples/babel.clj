@@ -283,16 +283,8 @@
                        [(pause 0.3)]
                        (say-a "Goodbye.")
                        [(pause 1.5)]))]
-        acts [["Act 1: Phone pickup" act1]
-              ["Act 2: Rising action" act2]
-              ["Act 2.5: Conjugation play" act-conj]
-              ["Act 3: Confrontation" act3]
-              ["Act 4: Wrap-up & goodbye" act4]]]
-    (vec (mapcat (fn [[label sections]]
-                  (binding [*out* *err*]
-                    (println (str "--- " label " ---")))
-                  (mapcat (fn [f] (concat (f) [(pause 0.6)])) sections))
-                acts))))
+        all-sections (concat act1 act2 act-conj act3 act4)]
+    (vec (mapcat (fn [f] (concat (f) [(pause 0.6)])) all-sections))))
 
 ;; --- Main ---
 
