@@ -17,6 +17,11 @@
 
 (def debug? (atom false))
 
+(def pid-dir (str (or (System/getenv "XDG_RUNTIME_DIR") "/tmp") "/bb-tts"))
+
+(defn pid-file [opts]
+  (str pid-dir "/server-" (:port opts) ".pid"))
+
 ;; Force HTTP/1.1 — uvicorn drops the request body on HTTP/2 upgrade
 (def http-client (http/client {:version :http1.1}))
 
@@ -46,18 +51,20 @@
 (defn ensure-server [opts]
   (when-not (health opts)
     (debug "Starting supertonic server...")
-    (proc/process ["supertonic-serve"
-                   "--host" (:host opts)
-                   "--port" (str (:port opts))]
-                  {:out (if @debug? :inherit (io/file "/dev/null"))
-                   :err (if @debug? :inherit (io/file "/dev/null"))})
-    (loop [attempts 60]
-      (cond
-        (health opts)   true
-        (pos? attempts) (do (Thread/sleep 500) (recur (dec attempts)))
-        :else           (do (binding [*out* *err*]
-                              (println "Error: server failed to start"))
-                            (System/exit 1))))))
+    (.mkdirs (io/file pid-dir))
+    (let [p (proc/process ["supertonic-serve"
+                           "--host" (:host opts)
+                           "--port" (str (:port opts))]
+                          {:out (if @debug? :inherit (io/file "/dev/null"))
+                           :err (if @debug? :inherit (io/file "/dev/null"))})]
+      (spit (pid-file opts) (.pid (:proc p)))
+      (loop [attempts 60]
+        (cond
+          (health opts)   true
+          (pos? attempts) (do (Thread/sleep 500) (recur (dec attempts)))
+          :else           (do (binding [*out* *err*]
+                                (println "Error: server failed to start"))
+                              (System/exit 1)))))))
 
 (defn list-voices [opts]
   (let [resp (http/get (str (base-url opts) "/v1/styles")
@@ -93,15 +100,35 @@
     (doseq [{:keys [name kind]} voices]
       (println (str "  " name " (" kind ")")))))
 
+(defn serve-foreground [opts]
+  (println (str "Starting supertonic server on " (base-url opts) " ..."))
+  (let [p (proc/process ["supertonic-serve"
+                         "--host" (:host opts)
+                         "--port" (str (:port opts))]
+                        {:out :inherit :err :inherit})]
+    @p))
+
+(defn stop-server [opts]
+  (let [pf (io/file (pid-file opts))]
+    (if (and (.exists pf) (health opts))
+      (let [pid (clojure.string/trim (slurp pf))]
+        @(proc/process ["kill" pid])
+        (.delete pf)
+        (println (str "Server stopped (pid " pid ")")))
+      (do (when (.exists pf) (.delete pf))
+          (println "No server running")))))
+
 (defn print-help []
   (println "bb-tts - Text-to-speech via Supertonic")
   (println)
-  (println "Usage: bb-tts.clj <command> [options]")
+  (println "Usage: bb-tts <command> [options]")
   (println)
   (println "Commands:")
   (println "  say <text>     Synthesize and play text")
   (println "  voices         List available voices")
   (println "  health         Check server status")
+  (println "  serve          Start server in foreground")
+  (println "  stop           Stop daemonized server")
   (println)
   (println "Options:")
   (println "  --voice NAME   Voice style (default: M1)")
@@ -129,4 +156,6 @@
                   (println (json/generate-string h {:pretty true}))
                   (do (println "Server not reachable")
                       (System/exit 1)))
+      "serve"   (serve-foreground opts)
+      "stop"    (stop-server opts)
       (print-help))))
