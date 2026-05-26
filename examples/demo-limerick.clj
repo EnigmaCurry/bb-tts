@@ -7,7 +7,8 @@
 (alter-var-root #'*pronunciations* (constantly
   {"REPL"    "repple"
    "Clojure" "closure"
-   "nix"     "nicks"}))
+   "nix"     "nicks"
+   "bow"     "boww"}))
 
 (def voices [["M1" M1] ["M2" M2] ["M3" M3] ["M4" M4] ["M5" M5]
              ["F1" F1] ["F2" F2] ["F3" F3] ["F4" F4] ["F5" F5]])
@@ -69,7 +70,7 @@
 
    ["The last voice stepped up to the stage,"
     "To deliver the final front page,"
-    "With a flourish and a boww,"
+    "With a flourish and bow,"
     "She said, that's all for now,"
     "And she exited, closing the page!"]])
 
