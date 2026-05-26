@@ -302,9 +302,10 @@
 
 (if render-file
   (do
-    (println (str "Rendering to " render-file " ..."))
     (let [voices-file (str tmpdir "/babel_voices.wav")
           intro-file (str tmpdir "/babel_intro.wav")]
+      (println (str "Rendering to " render-file " ..."))
+      (println (str "Voices temp file: " voices-file))
       (apply render voices-file (build-story))
       @(proc/process ["sox" ring-file voices-file render-file]
                      {:out :inherit :err :inherit})
