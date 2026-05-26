@@ -121,7 +121,7 @@
     (apply sox (concat @parts [(tmp "modem_raw")]))
     ;; Trim to duration, lowpass to keep everything soft
     (sox (tmp "modem_raw") output-file "trim" "0" (str duration)
-         "lowpass" "800" "norm" "-6")
+         "lowpass" "800" "norm")
     ;; Cleanup
     (doseq [i (range element-count)]
       (.delete (io/file (tmp (str "modem_el_" i))))

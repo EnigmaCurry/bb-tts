@@ -242,14 +242,8 @@
 (sfx/generate-ringtone 2 ring-file)
 
 (println "Generating modem soundscape...")
-(let [loop-dur 60
-      modem-file (sfx/generate-modem loop-dur (sfx/tmp "babel_modem")
-                   :element-count (int (* loop-dur 0.4))
-                   :gap-min 0.5 :gap-max 3.0)]
-  (sfx/mix [[modem-file -8]]
-           bg-file
-           :fade-in 2 :fade-out 2 :duration loop-dur :gain -4)
-  (.delete (io/file modem-file)))
+(sfx/generate-modem 60 bg-file
+  :element-count 24 :gap-min 0.5 :gap-max 3.0)
 
 (if render-file
   (do
@@ -278,8 +272,11 @@
       (println (str "Done: " render-file))))
   (do
     (println "=== Babel ===\n")
-    (def bg-player (proc/process ["sox" bg-file "-t" "pulseaudio" "" "repeat" "100"]
-                                 {:out :inherit :err (io/file "/dev/null")}))
+    (def bg-player (proc/process
+                     ["bash" "-c"
+                      (str "sox " bg-file " -t raw -r 44100 -c 2 -e signed -b 16 - repeat 100"
+                           " | paplay --raw --format=s16le --rate=44100 --channels=2")]
+                     {:out :inherit :err (io/file "/dev/null")}))
     ;; Play ringtone, then stream voices live
     @(proc/process ["paplay" ring-file] {:out :inherit :err :inherit})
     (apply perform (build-story))
