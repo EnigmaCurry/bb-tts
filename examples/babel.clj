@@ -5,7 +5,7 @@
 ;; as if telling a story in a pidgin tongue over a droning soundscape.
 
 (require '[tts :refer [perform render say pause laugh breath sigh
-                       M3 F4 with-speed ensure-server *sox-effects*]]
+                       M3 F4 with-speed ensure-server *sox-effects* *speed*]]
          '[sfx :as sfx]
          '[babashka.process :as proc]
          '[clojure.java.io :as io])
@@ -136,44 +136,39 @@
 (defn rapid-exchange
   "Quick back-and-forth, increasingly glossolalic."
   []
-  (with-speed 1.1
-    (mapcat (fn [_]
-              (concat (say-a ((rand-nth story-templates)))
-                      (say-b ((rand-nth story-templates)))))
-            (range (+ 3 (rand-int 3))))))
+  (mapcat (fn [_]
+            (concat (say-a ((rand-nth story-templates)))
+                    (say-b ((rand-nth story-templates)))))
+          (range (+ 3 (rand-int 3)))))
 
 (defn slow-monologue
   "One voice tells a stretch of the story, slower and more contemplative."
   []
   (let [voice-fn (rand-nth speakers)]
-    (with-speed 0.85
-      (vec (mapcat (fn [_] (voice-fn ((rand-nth story-templates))))
-                   (range (+ 2 (rand-int 3))))))))
+    (vec (mapcat (fn [_] (voice-fn ((rand-nth story-templates))))
+                 (range (+ 2 (rand-int 3)))))))
 
 (defn unison-chant
   "Both voices say the same glossolalia phrase together."
   []
   (let [p (gphrase (+ 3 (rand-int 3)))]
-    (with-speed 0.8
-      (concat (say-a p) (say-b p)))))
+    (concat (say-a p) (say-b p))))
 
 (defn argument
   "Heated exchange — short bursts, fast, with interjections."
   []
-  (with-speed 1.2
-    (mapcat (fn [_]
-              (let [[first-voice second-voice] (shuffle speakers)]
-                (concat (first-voice ((rand-nth story-templates)))
-                        (second-voice (gphrase (+ 1 (rand-int 2)))))))
-            (range (+ 3 (rand-int 3))))))
+  (mapcat (fn [_]
+            (let [[first-voice second-voice] (shuffle speakers)]
+              (concat (first-voice ((rand-nth story-templates)))
+                      (second-voice (gphrase (+ 1 (rand-int 2)))))))
+          (range (+ 3 (rand-int 3)))))
 
 (defn whispered-aside
   "One voice drops to a slow aside, as if confiding a secret."
   []
   (let [voice-fn (rand-nth speakers)]
-    (with-speed 0.75
-      (voice-fn (format "Listen... the %s %s... it %s the %s... %s..."
-                  (gadj) (gnoun) (gverb-now) (gnoun) (gword))))))
+    (voice-fn (format "Listen... the %s %s... it %s the %s... %s..."
+                (gadj) (gnoun) (gverb-now) (gnoun) (gword)))))
 
 ;; --- Build the story ---
 
@@ -197,34 +192,31 @@
               whispered-aside exchange]
         ;; Act 3: Confrontation — heated and chaotic
         act3 [argument unison-chant rapid-exchange
-              (fn [] (with-speed 0.9
-                       (concat
-                         (say-a (format "The %s %s %s %s the %s!"
-                                  (gadj) (gnoun) (gadv) (gverb) (gnoun)))
-                         (say-b (laugh))
-                         (say-b (format "%s! %s %s!"
-                                  (gword) (gword) (gword))))))]
+              (fn [] (concat
+                       (say-a (format "The %s %s %s %s the %s!"
+                                (gadj) (gnoun) (gadv) (gverb) (gnoun)))
+                       (say-b (laugh))
+                       (say-b (format "%s! %s %s!"
+                                (gword) (gword) (gword)))))]
         ;; Act 4: Wrapping up — summarizing, winding down
         act4 [exchange
-              (fn [] (with-speed 0.95
-                       (concat
-                         (say-a (format "So, the %s %s %s the %s. %s."
-                                  (gadj) (gnoun) (gverb) (gnoun) (gword)))
-                         (say-b (format "Right, right. And the %s %s, it %s."
-                                  (gadj) (gnoun) (gword)))
-                         (say-a (format "Exactly. %s %s %s."
-                                  (gword) (gword) (gword))))))
+              (fn [] (concat
+                       (say-a (format "So, the %s %s %s the %s. %s."
+                                (gadj) (gnoun) (gverb) (gnoun) (gword)))
+                       (say-b (format "Right, right. And the %s %s, it %s."
+                                (gadj) (gnoun) (gword)))
+                       (say-a (format "Exactly. %s %s %s."
+                                (gword) (gword) (gword)))))
               ;; Act 5: Goodbye
-              (fn [] (with-speed 0.85
-                       (concat
-                         (say-b (format "Okay, I have to go. %s %s."
-                                  (gword) (gword)))
-                         (say-a (format "Yes, yes. %s. Talk soon."
-                                  (gword)))
-                         (say-b (format "%s. Goodbye." (gword)))
-                         [(pause 0.3)]
-                         (say-a "Goodbye.")
-                         [(pause 1.5)])))]
+              (fn [] (concat
+                       (say-b (format "Okay, I have to go. %s %s."
+                                (gword) (gword)))
+                       (say-a (format "Yes, yes. %s. Talk soon."
+                                (gword)))
+                       (say-b (format "%s. Goodbye." (gword)))
+                       [(pause 0.3)]
+                       (say-a "Goodbye.")
+                       [(pause 1.5)]))]
         all-sections (concat act1 act2 act3 act4)]
     (vec (mapcat (fn [f] (concat (f) [(pause 0.6)])) all-sections))))
 
@@ -233,6 +225,8 @@
 (ensure-server)
 ;; Telephone bandpass on voices
 (alter-var-root #'*sox-effects* (constantly ["sinc" "300-3400"]))
+;; Slowest speed for all voices
+(alter-var-root #'*speed* (constantly 0.7))
 
 (def tmpdir (System/getProperty "java.io.tmpdir"))
 (def ring-file (str tmpdir "/babel_ring.wav"))
