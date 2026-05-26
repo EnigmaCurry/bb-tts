@@ -37,6 +37,27 @@
   (Double/parseDouble
     (str/trim (:out @(proc/process ["sox" "--info" "-D" path] {:out :string})))))
 
+;; --- Telephone ---
+
+(defn generate-ringtone
+  "Generate a telephone ringtone WAV (US style: 440+480 Hz, 2s on / 4s off).
+   rings = number of rings."
+  [rings output-file]
+  (let [r (str *rate*)
+        ring-files (mapv (fn [i]
+                           (let [f (tmp (str "ring_" i))]
+                             ;; 2s dual-tone ring
+                             (sox "-n" "-r" r "-c" "1" f
+                                  "synth" "2" "sine" "440" "sine" "480"
+                                  "gain" "-6"
+                                  "pad" "0" "3")
+                             f))
+                         (range rings))]
+    ;; Concatenate rings
+    (apply sox (concat ring-files [output-file]))
+    (doseq [f ring-files] (.delete (io/file f)))
+    output-file))
+
 ;; --- Fire ---
 
 (defn generate-fire

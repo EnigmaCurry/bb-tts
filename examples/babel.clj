@@ -178,15 +178,19 @@
 ;; --- Build the story ---
 
 (defn build-story []
-  (let [;; Act 1: Introduction — setting the scene
-        act1 [(fn [] (with-speed 0.9
-                       (concat
-                         (say-a (format "Once, %s, there lived a %s %s."
-                                  (gloc) (gadj) (gnoun)))
-                         (say-b (format "%s? A %s %s?"
-                                  (gword) (gadj) (gnoun)))
-                         (say-a (format "Yes. And a %s %s %s beside it."
-                                  (gadj) (gnoun) (gword))))))
+  (let [;; Act 1: Phone pickup and opening — voice B answers, A launches into pidgin
+        act1 [(fn [] (concat
+                       (say-b "Hello?")
+                       (pause 0.4)
+                       (say-a (format "%s! %s, %s %s!"
+                                (gword) (gword) (gadj) (gnoun)))
+                       (say-b (format "Who is this? What do you %s?"
+                                (gword)))
+                       (pause 0.3)
+                       (say-a (format "Listen, the %s %s, it %s the %s."
+                                (gadj) (gnoun) (gverb-now) (gnoun)))
+                       (say-b (format "The %s? %s?"
+                                (gnoun) (gword)))))
               exchange exchange]
         ;; Act 2: Rising action — things get weird
         act2 [rapid-exchange slow-monologue exchange
@@ -226,6 +230,7 @@
 
 (def duration 120)
 (def bg-file (str (System/getProperty "java.io.tmpdir") "/babel_bg.wav"))
+(def ring-file (str (System/getProperty "java.io.tmpdir") "/babel_ring.wav"))
 
 (println "Generating soundscape...")
 (let [drone-file (sfx/generate-drone duration (sfx/tmp "babel_drone")
@@ -238,22 +243,38 @@
   (doseq [f [drone-file birds-file]]
     (.delete (io/file f))))
 
+(println "Generating ringtone...")
+(sfx/generate-ringtone 3 ring-file)
+
+(defn play-ring []
+  (let [p (proc/process ["paplay" ring-file]
+                        {:out :inherit :err :inherit})]
+    @p))
+
 (if render-file
   (do
     (println (str "Rendering to " render-file " ..."))
-    (let [voices-file (str (System/getProperty "java.io.tmpdir") "/babel_voices.wav")]
+    (let [voices-file (str (System/getProperty "java.io.tmpdir") "/babel_voices.wav")
+          intro-file (str (System/getProperty "java.io.tmpdir") "/babel_intro.wav")]
       (apply render voices-file (build-story))
+      ;; Concat ringtone + voices, then mix with background
+      @(proc/process ["sox" ring-file voices-file intro-file]
+                     {:out :inherit :err (io/file "/dev/null")})
       (println "Mixing voices with background...")
-      @(proc/process ["sox" "-m" voices-file bg-file render-file "norm"]
+      @(proc/process ["sox" "-m" intro-file bg-file render-file "norm"]
                      {:out :inherit :err (io/file "/dev/null")})
       (.delete (io/file voices-file))
+      (.delete (io/file intro-file))
       (.delete (io/file bg-file))
+      (.delete (io/file ring-file))
       (println (str "Done: " render-file))))
   (do
     (println "=== Babel ===\n")
     (def bg-player (proc/process ["paplay" bg-file]
                                  {:out :inherit :err :inherit}))
+    (play-ring)
     (apply perform (build-story))
     (future (Thread/sleep 5000) (.destroy (:proc bg-player)))
     @bg-player
-    (.delete (io/file bg-file))))
+    (.delete (io/file bg-file))
+    (.delete (io/file ring-file))))
