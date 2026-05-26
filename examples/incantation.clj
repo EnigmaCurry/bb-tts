@@ -28,8 +28,35 @@
 (defn gword []
   (apply str (repeatedly (inc (rand-int 3)) syllable)))
 
+;; Thunderwords — massive compound nonsense words, Finnegans Wake style
+(def thunder-onsets
+  ["b" "d" "g" "kr" "th" "br" "dr" "gr" "tr" "sk" "str" "pr"])
+
+(def thunder-vowels
+  ["a" "o" "u" "oo" "ah" "ou" "au" "oh"])
+
+(def thunder-clusters
+  ["rr" "nn" "mm" "nk" "ng" "nth" "rn" "rm" "nd" "nt" "nnt" "rrh"
+   "ghh" "kk" "tt" "pp" "nth" "wn" "rd" "rth" "ghr" "ght"])
+
+(defn thunder-syllable []
+  (str (rand-nth thunder-onsets)
+       (rand-nth thunder-vowels)
+       (rand-nth thunder-clusters)))
+
+(defn thunderword []
+  (let [n (+ 12 (rand-int 16))]
+    (apply str (repeatedly n thunder-syllable))))
+
 (defn phrase [n]
   (clojure.string/join " " (repeatedly n gword)))
+
+(defn maybe-thunderword
+  "With ~15% chance, insert a thunderword into a section."
+  [voice-fn]
+  (when (< (rand) 0.15)
+    (with-speed 0.75
+      (voice-fn (thunderword)))))
 
 ;; --- Speech sections with panning ---
 
@@ -40,23 +67,29 @@
 (defn say-f [& parts] (pan-segs (apply say F5 parts) 0.5))
 
 (defn rapid-dialog []
-  (with-speed 1.15
-    (mapcat (fn [_]
-              (concat (say-m (phrase (+ 1 (rand-int 2))))
-                      (say-f (phrase (+ 1 (rand-int 2))))))
-            (range (+ 4 (rand-int 4))))))
+  (concat
+    (with-speed 1.15
+      (mapcat (fn [_]
+                (concat (say-m (phrase (+ 1 (rand-int 2))))
+                        (say-f (phrase (+ 1 (rand-int 2))))))
+              (range (+ 4 (rand-int 4)))))
+    (maybe-thunderword (rand-nth [say-m say-f]))))
 
 (defn echo-section []
   (let [phrases (repeatedly (+ 3 (rand-int 3)) #(phrase (+ 2 (rand-int 2))))
         [a b] (if (< (rand) 0.5) [say-m say-f] [say-f say-m])]
-    (with-speed 0.85
-      (mapcat (fn [p] (concat (a p) (b p))) phrases))))
+    (concat
+      (with-speed 0.85
+        (mapcat (fn [p] (concat (a p) (b p))) phrases))
+      (maybe-thunderword (rand-nth [say-m say-f])))))
 
 (defn monologue []
   (let [voice-fn (rand-nth [say-m say-f])]
-    (with-speed 0.8
-      (vec (mapcat (fn [_] (voice-fn (phrase (+ 3 (rand-int 3)))))
-                   (range (+ 4 (rand-int 4))))))))
+    (concat
+      (with-speed 0.8
+        (vec (mapcat (fn [_] (voice-fn (phrase (+ 3 (rand-int 3)))))
+                     (range (+ 4 (rand-int 4))))))
+      (maybe-thunderword voice-fn))))
 
 (defn unison []
   (let [p (phrase 3)]
