@@ -12,7 +12,10 @@
    :voice "M1"
    :lang "en"
    :speed 1.0
-   :format "wav"})
+   :format "wav"
+   :debug false})
+
+(def debug? (atom false))
 
 ;; Force HTTP/1.1 — uvicorn drops the request body on HTTP/2 upgrade
 (def http-client (http/client {:version :http1.1}))
@@ -20,31 +23,34 @@
 (defn base-url [{:keys [host port]}]
   (str "http://" host ":" port))
 
+(defn debug [& args]
+  (when @debug?
+    (binding [*out* *err*]
+      (apply println args))))
+
 (defmacro timed [label & body]
   `(let [start# (System/currentTimeMillis)
          result# (do ~@body)
          elapsed# (- (System/currentTimeMillis) start#)]
-     (binding [*out* *err*]
-       (println (format "%s: %dms" ~label elapsed#)))
+     (debug (format "%s: %dms" ~label elapsed#))
      result#))
 
 (defn health [opts]
   (try
-    (let [result (timed "Health check"
-                   (let [resp (http/get (str (base-url opts) "/v1/health")
-                                        {:client http-client})]
-                     (json/parse-string (:body resp) true)))]
-      result)
+    (timed "Health check"
+      (let [resp (http/get (str (base-url opts) "/v1/health")
+                           {:client http-client})]
+        (json/parse-string (:body resp) true)))
     (catch Exception _e nil)))
 
 (defn ensure-server [opts]
   (when-not (health opts)
-    (binding [*out* *err*]
-      (println "Starting supertonic server..."))
+    (debug "Starting supertonic server...")
     (proc/process ["supertonic-serve"
                    "--host" (:host opts)
                    "--port" (str (:port opts))]
-                  {:out :inherit :err :inherit})
+                  {:out (if @debug? :inherit "/dev/null")
+                   :err (if @debug? :inherit "/dev/null")})
     (loop [attempts 60]
       (cond
         (health opts)   true
@@ -102,22 +108,25 @@
   (println "  --lang CODE    Language code (default: en)")
   (println "  --speed N      Speed 0.7-2.0 (default: 1.0)")
   (println "  --host HOST    Server host (default: 127.0.0.1)")
-  (println "  --port PORT    Server port (default: 7788)"))
+  (println "  --port PORT    Server port (default: 7788)")
+  (println "  --debug        Show timing and server logs"))
 
 (let [{:keys [args opts]} (cli/parse-args *command-line-args*
                             {:coerce {:port :int
-                                      :speed :double}})
-      opts (merge default-opts opts)
-      [cmd & rest-args] args]
-  (case cmd
-    "say"     (if (seq rest-args)
-                (do (ensure-server opts)
-                    (speak (clojure.string/join " " rest-args) opts))
-                (do (println "Error: no text provided")
-                    (System/exit 1)))
-    "voices"  (do (ensure-server opts) (print-voices opts))
-    "health"  (if-let [h (do (ensure-server opts) (health opts))]
-                (println (json/generate-string h {:pretty true}))
-                (do (println "Server not reachable")
-                    (System/exit 1)))
-    (print-help)))
+                                      :speed :double
+                                      :debug :boolean}})
+      opts (merge default-opts opts)]
+  (reset! debug? (:debug opts))
+  (let [[cmd & rest-args] args]
+    (case cmd
+      "say"     (if (seq rest-args)
+                  (do (ensure-server opts)
+                      (speak (clojure.string/join " " rest-args) opts))
+                  (do (println "Error: no text provided")
+                      (System/exit 1)))
+      "voices"  (do (ensure-server opts) (print-voices opts))
+      "health"  (if-let [h (do (ensure-server opts) (health opts))]
+                  (println (json/generate-string h {:pretty true}))
+                  (do (println "Server not reachable")
+                      (System/exit 1)))
+      (print-help))))
