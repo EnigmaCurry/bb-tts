@@ -120,8 +120,8 @@
 (defn pan-segs [segs pan]
   (mapv #(if (map? %) (assoc % :pan pan) %) (flatten segs)))
 
-(defn say-a [& parts] (pan-segs (apply say M3 parts) -0.25))
-(defn say-b [& parts] (pan-segs (apply say F4 parts) 0.25))
+(defn say-a [& parts] (pan-segs (apply say M3 parts) -0.7))
+(defn say-b [& parts] (pan-segs (apply say F4 parts) 0.7))
 
 (def speakers [say-a say-b])
 
@@ -221,8 +221,10 @@
 ;; --- Main ---
 
 (ensure-server)
-;; Telephone bandpass filter on voices (300-3400 Hz)
-(alter-var-root #'*sox-effects* (constantly ["sinc" "300-3400"]))
+;; Telephone bandpass + distance: voices sound far away
+(alter-var-root #'*sox-effects* (constantly ["sinc" "300-3400"
+                                             "reverb" "60" "70" "90" "50"
+                                             "gain" "-4"]))
 
 (def duration 120)
 (def bg-file (str (System/getProperty "java.io.tmpdir") "/babel_bg.wav"))
