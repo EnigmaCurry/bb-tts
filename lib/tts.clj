@@ -158,7 +158,6 @@
 (def ^:dynamic *pronunciations*
   {"REPL"      "repple"
    "Clojure"   "closure"
-   "babashka"  "bah-bash-kah"
    "nix"       "nicks"})
 
 (defn- apply-pronunciations [text]
