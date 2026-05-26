@@ -8,7 +8,6 @@ Includes a CLI tool and a Clojure DSL for composing multi-voice speech with expr
 
 - [Nix](https://nixos.org) with flakes enabled
 - PulseAudio or PipeWire (for `paplay`)
-- x86_64 Linux
 
 ## Quick start
 
