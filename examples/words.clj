@@ -36,10 +36,10 @@
                  clojure.string/split-lines
                  (filter #(re-matches #"[a-z]{4,}" %))
                  shuffle
-                 (take 50)
-                 (partition-all 5))]
+                 (take 100)
+                 (partition-all 10))]
   (ensure-server)
   (doseq [[[voice-name voice] batch] (map vector voices words)]
     (println (str "--- " voice-name " ---"))
-    (println (clojure.string/join ", " batch))
-    (perform (apply say voice (interpose "," batch)))))
+    (println (clojure.string/join ". " batch))
+    (perform (apply say voice (interpose "." batch)))))
