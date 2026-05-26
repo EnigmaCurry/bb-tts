@@ -1,117 +1,89 @@
 #!/usr/bin/env bb
 
-;; Mystical sorcery incantations — dark rituals and arcane chants.
+;; Pure glossolalia ritual — two voices, M5 and F5.
+;; Oscillates between rapid dialog, repetition, and monologue.
 
-(require '[tts :refer [perform say pause breath sigh
-                       M1 M2 M3 M4 M5 F1 F2 F3 F4 F5
-                       with-speed]])
+(require '[tts :refer [perform say pause
+                       M5 F5 with-speed]])
 
-(def ancient-words
-  ["azaroth" "velkonis" "shemara" "drakonis" "nethûl" "volmaris"
-   "khethani" "zul'varak" "morthis" "ashkari" "grimaldi" "sorvanus"
-   "ul'thane" "vexorim" "narthul" "obsidrane" "kholmari" "zhavros"
-   "tel'gorath" "umbrani" "sylvaris" "dûmkrest" "pharonis" "ignathar"
-   "val'morien" "eskandros" "revathi" "krynn'os" "thal'mera" "zur'akhi"])
+(def onsets
+  ["z" "k" "th" "v" "sh" "d" "g" "b" "m" "kh"
+   "f" "r" "p" "t" "s" "l" "n" "h" "w" "j"
+   "ch" "dr" "gl" "br" "fr" "tr" "pr" "kr" "zh" "sk"])
 
-(def elements
-  ["shadow" "flame" "void" "stone" "ash" "frost" "storm"
-   "bone" "iron" "blood" "thorn" "dust" "smoke" "crystal"
-   "obsidian" "mercury" "sulfur" "salt" "amber" "onyx"])
+(def vowels
+  ["a" "e" "i" "o" "u" "ah" "oh" "ee" "oo" "ai"
+   "ei" "au" "ay" "ey" "uh" "aa" "oi"])
 
-(def vessels
-  ["chalice" "crucible" "sigil" "altar" "pentacle" "phylactery"
-   "athame" "censer" "obelisk" "monolith" "grimoire" "reliquary"
-   "cauldron" "brazier" "sarcophagus" "rune stone" "scrying pool"
-   "black mirror" "hourglass" "astrolabe"])
+(def endings
+  ["" "" "" "" "" "" "n" "m" "r" "l" "s" "th" "sh"])
 
-(def actions
-  ["bind" "summon" "banish" "awaken" "consume" "shatter"
-   "invoke" "unravel" "devour" "transmute" "consecrate" "desecrate"
-   "seal" "unleash" "corrupt" "purify" "ignite" "extinguish"
-   "rend" "weave" "forge" "dissolve" "conjure" "entomb"])
+(defn syllable []
+  (str (rand-nth onsets) (rand-nth vowels) (rand-nth endings)))
 
-(def entities
-  ["the hollow king" "the serpent of ages" "the nameless one"
-   "the watcher between" "the pale architect" "the formless hunger"
-   "the bone weaver" "the dream eater" "the star drinker"
-   "the ash mother" "the void herald" "the thorn sovereign"
-   "the silent choir" "the iron oracle" "the last witness"
-   "the deep crawling chaos" "the obsidian shepherd" "the flame tongue"])
+(defn gword []
+  (let [n (inc (rand-int 3))]
+    (apply str (repeatedly n syllable))))
 
-(def domains
-  ["the space between stars" "the marrow of the earth"
-   "the river of forgotten names" "the halls of unmade things"
-   "the well of black glass" "the roots beneath the world"
-   "the door that was never opened" "the silence after thunder"
-   "the wound in the sky" "the garden of teeth"
-   "the library of ashes" "the throne of echoes"
-   "the cradle of extinction" "the labyrinth of veins"
-   "the furnace of dead suns" "the altar of unbecoming"])
+(defn phrase [n]
+  (clojure.string/join " " (repeatedly n gword)))
 
-(def refrains
-  ["So it was spoken. So it shall be."
-   "The circle is drawn. The price is paid."
-   "From nothing, something. From something, nothing."
-   "What sleeps shall wake. What wakes shall hunger."
-   "The old words hold. The old words bind."
-   "Ash to ash. Void to void."
-   "The seal is broken. There is no return."
-   "The stars remember what the earth forgets."])
+;; --- Section generators ---
 
-(defn pick [coll] (rand-nth coll))
+(defn rapid-dialog
+  "Quick back-and-forth, short phrases."
+  []
+  (let [pairs (+ 4 (rand-int 4))]
+    (with-speed 1.15
+      (mapcat (fn [_]
+                [(say M5 (phrase (+ 1 (rand-int 2))))
+                 (say F5 (phrase (+ 1 (rand-int 2))))])
+              (range pairs)))))
 
-(defn invocation-line []
-  (rand-nth
-    [(str (pick ancient-words) ", " (pick ancient-words) ", " (pick ancient-words))
-     (str "By the " (pick elements) " and the " (pick elements) ", I " (pick actions) " thee")
-     (str "I call upon " (pick entities) " who dwells in " (pick domains))
-     (str "Let the " (pick vessels) " of " (pick elements) " " (pick actions) " " (pick entities))
-     (str "Through " (pick domains) ", the " (pick elements) " " (pick vessels) " shall " (pick actions))
-     (str (pick ancient-words) "! " (pick ancient-words) "! Rise from " (pick domains))]))
+(defn echo-section
+  "One voice says a phrase, the other repeats it."
+  []
+  (let [phrases (repeatedly (+ 3 (rand-int 3)) #(phrase (+ 2 (rand-int 2))))
+        leader (if (< (rand) 0.5) [M5 F5] [F5 M5])]
+    (with-speed 0.85
+      (mapcat (fn [p]
+                [(say (first leader) p)
+                 (say (second leader) p)])
+              phrases))))
 
-(defn make-incantation []
-  (vec (repeatedly 6 invocation-line)))
+(defn monologue
+  "One voice speaks alone, longer phrases."
+  []
+  (let [voice (rand-nth [M5 F5])
+        lines (+ 4 (rand-int 4))]
+    (with-speed 0.8
+      (mapv (fn [_] (say voice (phrase (+ 3 (rand-int 3))))) (range lines)))))
 
-(def sorcerers
-  [{:name "The Hollow Magus"      :voice M3  :speed 0.85}
-   {:name "The Ash Priestess"     :voice F2  :speed 0.8}
-   {:name "The Bone Scrivener"    :voice M5  :speed 0.9}
-   {:name "The Void Sibyl"        :voice F4  :speed 0.75}
-   {:name "The Iron Hierophant"   :voice M1  :speed 0.85}])
+(defn unison
+  "Both voices say the same thing."
+  []
+  (let [p (phrase 3)]
+    [(say M5 p)
+     (say F5 p)]))
 
-(println "=== The Ritual of Unbecoming ===\n")
+;; --- Build the ritual ---
 
-;; Opening
-(perform
-  (with-speed 0.75
-    (say F2 (breath) "We gather at the threshold."))
-  (pause 1.0))
+(def sections
+  [rapid-dialog echo-section monologue rapid-dialog
+   echo-section monologue rapid-dialog unison])
 
-(doseq [{:keys [name voice speed]} sorcerers]
-  (println (str "[" name "]"))
-  (let [lines (make-incantation)]
-    (doseq [line lines] (println (str "  " line)))
-    (println)
-    (perform
-      (with-speed speed
-        (say voice (breath) (first lines))
-        (apply say voice (interpose "." (rest lines))))
-      (pause 0.5)
-      (with-speed 0.75
-        (say voice (pick refrains)))
-      (pause 1.0))))
+(println "=== The Ritual ===\n")
 
-;; Closing ritual — all voices in unison
-(println "[The Circle]")
-(let [final-refrain (pick refrains)]
-  (println (str "  " final-refrain))
-  (println)
+(doseq [[i section-fn] (map-indexed vector sections)]
+  (let [segs (section-fn)]
+    (apply perform (concat segs [(pause 0.8)]))))
+
+;; Final unison chant
+(let [w (gword)]
   (perform
-    (pause 0.5)
     (with-speed 0.7
-      (say M3 (str (pick ancient-words) ". " (pick ancient-words) ". " (pick ancient-words) "."))
-      (say F2 (sigh) (str "The " (pick vessels) " is " (pick actions) "ed."))
-      (say M5 (str (pick entities) " " (pick actions) "s " (pick domains) "."))
-      (say F4 (breath) final-refrain)
-      (pause 1.0)
-      (say M1 "It is done."))))
+      (say M5 (str w ". " w ". " w "."))
+      (say F5 (str w ". " w ". " w "."))
+      (pause 0.5)
+      (say M5 w)
+      (say F5 w))))
