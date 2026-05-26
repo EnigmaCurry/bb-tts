@@ -306,7 +306,7 @@
           intro-file (str tmpdir "/babel_intro.wav")]
       (apply render voices-file (build-story))
       @(proc/process ["sox" ring-file voices-file render-file]
-                     {:out :inherit :err (io/file "/dev/null")})
+                     {:out :inherit :err :inherit})
       (doseq [f [voices-file intro-file ring-file]]
         (when (.exists (io/file f)) (.delete (io/file f))))
       (println (str "Done: " render-file))))
