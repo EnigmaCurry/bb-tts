@@ -422,6 +422,8 @@
     (if (seq fx)
       (let [tmp-raw (java.io.File/createTempFile "bb-tts-render-" ".raw")]
         (.deleteOnExit tmp-raw)
+        (binding [*out* *err*]
+          (println (str "Raw PCM temp file: " tmp-raw)))
         (with-open [out (io/output-stream tmp-raw)]
           (doseq [^bytes chunk chunks]
             (.write out chunk)))
