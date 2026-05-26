@@ -170,6 +170,54 @@
     (voice-fn (format "Listen... the %s %s... it %s the %s... %s..."
                 (gadj) (gnoun) (gverb-now) (gnoun) (gword)))))
 
+;; --- Conjugation suffixes for nonsense declension ---
+(def conjugation-suffixes
+  ["-ah" "-en" "-oth" "-ul" "-een" "-az" "-im" "-esh"
+   "-oon" "-ik" "-ara" "-eth" "-um" "-osh" "-ani" "-el"])
+
+(defn conjugate
+  "Take a root word and produce N conjugated forms."
+  [root n]
+  (let [suffixes (take n (shuffle conjugation-suffixes))]
+    (mapv #(str root %) suffixes)))
+
+(defn conjugation-list
+  "One speaker recites a conjugation list of a nonsense word."
+  []
+  (let [voice-fn (rand-nth speakers)
+        root (gword)
+        forms (conjugate root (+ 4 (rand-int 4)))
+        listing (clojure.string/join ". " forms)]
+    (concat
+      (voice-fn (str root ":"))
+      (voice-fn (str listing ".")))))
+
+(defn dueling-conjugations
+  "Both speakers conjugate, then play off each other's words."
+  []
+  (let [root-a (gword)
+        root-b (gword)
+        forms-a (conjugate root-a (+ 3 (rand-int 3)))
+        forms-b (conjugate root-b (+ 3 (rand-int 3)))]
+    (concat
+      ;; A recites their conjugation
+      (say-a (str root-a ": " (clojure.string/join ", " forms-a) "."))
+      [(pause 0.3)]
+      ;; B recites theirs
+      (say-b (str root-b ": " (clojure.string/join ", " forms-b) "."))
+      [(pause 0.3)]
+      ;; Now they play — echoing and mixing each other's forms
+      (say-a (str (rand-nth forms-b) "? " (rand-nth forms-a) "!"))
+      (say-b (str (rand-nth forms-a) "! " (rand-nth forms-b) ", " (rand-nth forms-b) "!"))
+      (say-a (str (rand-nth forms-b) ", " (rand-nth forms-a) ", " (rand-nth forms-b) "..."))
+      (say-b (laugh))
+      (say-b (str (rand-nth forms-a) "! " (rand-nth forms-a) "!"))
+      (say-a (str (rand-nth forms-b) ". " (rand-nth forms-a) ". "
+                  (rand-nth forms-b) ". " (rand-nth forms-a) "."))
+      (say-b (str (rand-nth forms-a) ", " (rand-nth forms-b) "!"))
+      (let [shared (str (rand-nth forms-a) " " (rand-nth forms-b))]
+        (concat (say-a shared) (say-b shared))))))
+
 ;; --- Build the story ---
 
 (defn build-story []
@@ -190,6 +238,9 @@
         ;; Act 2: Rising action — things get weird
         act2 [rapid-exchange slow-monologue exchange
               whispered-aside exchange]
+        ;; Act 2.5: Conjugation play — word games in the middle
+        act-conj [conjugation-list conjugation-list
+                  dueling-conjugations]
         ;; Act 3: Confrontation — heated and chaotic
         act3 [argument unison-chant rapid-exchange
               (fn [] (concat
@@ -217,7 +268,7 @@
                        [(pause 0.3)]
                        (say-a "Goodbye.")
                        [(pause 1.5)]))]
-        all-sections (concat act1 act2 act3 act4)]
+        all-sections (concat act1 act2 act-conj act3 act4)]
     (vec (mapcat (fn [f] (concat (f) [(pause 0.6)])) all-sections))))
 
 ;; --- Main ---
