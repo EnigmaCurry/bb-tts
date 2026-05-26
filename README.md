@@ -76,9 +76,9 @@ Run DSL scripts with the library on the classpath:
 ```bash
 # From a local clone
 nix develop
-bb -cp lib my-script.clj
+bb examples/demo.clj
 
-# Or run the included demos
+# Or run the included demos without cloning
 nix run github:EnigmaCurry/bb-tts#demo
 ```
 
