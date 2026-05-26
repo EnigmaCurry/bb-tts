@@ -72,23 +72,19 @@
 (def ^:dynamic *speed* 1.0)
 (def ^:dynamic *lang* "en")
 
-;; Expression tags — return strings that get joined into segment text
-(defn laugh  [] "<laugh>")
-(defn breath [] "<breath>")
-(defn sigh   [] "<sigh>")
+;; Expression tags — synthesized as their own segments for best quality
+(defn laugh  [] {:type :expression :tag "<laugh>"})
+(defn breath [] {:type :expression :tag "<breath>"})
+(defn sigh   [] {:type :expression :tag "<sigh>"})
 
-;; Pause — returns a special segment with silence duration
+;; Pause — generates PCM silence
 (defn pause [seconds]
   {:type :pause :seconds seconds})
 
 ;; Voice constructors — each returns a function that builds segments.
-;; Parts can be strings, expression tag fns, or pause segments.
-;; Pauses split the text into separate speech segments with a pause between.
+;; Expression tags and pauses split text into separate segments.
 (defn- build-segments [voice lang speed parts]
-  (let [resolved (map #(cond (fn? %)  (%)
-                             (string? %) %
-                             :else %)
-                      parts)]
+  (let [resolved (map #(if (fn? %) (%) %) parts)]
     (loop [remaining resolved
            current-text []
            result []]
@@ -98,12 +94,27 @@
                         :text (clojure.string/join " " current-text)})
           result)
         (let [part (first remaining)]
-          (if (and (map? part) (= :pause (:type part)))
+          (cond
+            ;; Pause — flush text, insert silence
+            (and (map? part) (= :pause (:type part)))
             (let [segs (if (seq current-text)
                          (conj result {:voice voice :lang lang :speed speed
                                        :text (clojure.string/join " " current-text)})
                          result)]
               (recur (rest remaining) [] (conj segs part)))
+
+            ;; Expression tag — flush text, insert as speech segment
+            (and (map? part) (= :expression (:type part)))
+            (let [segs (if (seq current-text)
+                         (conj result {:voice voice :lang lang :speed speed
+                                       :text (clojure.string/join " " current-text)})
+                         result)]
+              (recur (rest remaining) []
+                     (conj segs {:voice voice :lang lang :speed speed
+                                 :text (:tag part)})))
+
+            ;; Plain text
+            :else
             (recur (rest remaining) (conj current-text part) result)))))))
 
 (defn- make-voice [name]
