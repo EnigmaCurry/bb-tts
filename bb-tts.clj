@@ -22,7 +22,7 @@
 (defn pid-file [opts]
   (str pid-dir "/server-" (:port opts) ".pid"))
 
-;; Force HTTP/1.1 — uvicorn drops the request body on HTTP/2 upgrade
+;; Force HTTP/1.1 — uvicorn doesn't support HTTP/2
 (def http-client (http/client {:version :http1.1}))
 
 (defn base-url [{:keys [host port]}]
