@@ -181,12 +181,12 @@
   (let [;; Act 1: Phone pickup and opening — voice B answers, A launches into pidgin
         act1 [(fn [] (concat
                        (say-b "Hello?")
-                       (pause 0.4)
+                       [(pause 0.4)]
                        (say-a (format "%s! %s, %s %s!"
                                 (gword) (gword) (gadj) (gnoun)))
                        (say-b (format "Who is this? What do you %s?"
                                 (gword)))
-                       (pause 0.3)
+                       [(pause 0.3)]
                        (say-a (format "Listen, the %s %s, it %s the %s."
                                 (gadj) (gnoun) (gverb-now) (gnoun)))
                        (say-b (format "The %s? %s?"
@@ -214,11 +214,11 @@
                          (say-b (format "%s... %s... %s..."
                                   (gword) (gword) (gword)))
                          (say-a (sigh))
-                         (pause 1.0)
+                         [(pause 1.0)]
                          (say-b (gphrase 3))
-                         (pause 0.5)
+                         [(pause 0.5)]
                          (say-a (gword))
-                         (pause 1.5))))]
+                         [(pause 1.5)])))]
         all-sections (concat act1 act2 act3 act4)]
     (vec (mapcat (fn [f] (concat (f) [(pause 0.6)])) all-sections))))
 
@@ -244,7 +244,7 @@
     (.delete (io/file f))))
 
 (println "Generating ringtone...")
-(sfx/generate-ringtone 3 ring-file)
+(sfx/generate-ringtone 2 ring-file)
 
 (defn play-ring []
   (let [p (proc/process ["paplay" ring-file]
