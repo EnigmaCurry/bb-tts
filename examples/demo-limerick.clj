@@ -8,7 +8,7 @@
   {"REPL"    "repple"
    "Clojure" "closure"
    "nix"     "nicks"
-   "bow"     "boww"}))
+   "bow"     "bau"}))
 
 (def voices [["M1" M1] ["M2" M2] ["M3" M3] ["M4" M4] ["M5" M5]
              ["F1" F1] ["F2" F2] ["F3" F3] ["F4" F4] ["F5" F5]])
