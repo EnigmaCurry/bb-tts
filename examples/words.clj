@@ -29,15 +29,17 @@
             (println "No dictionary found. Run inside 'nix develop' or install scowl."))
           (System/exit 1))))
 
-(def voices [M1 M2 M3 M4 M5 F1 F2 F3 F4 F5])
+(def voices [["M1" M1] ["M2" M2] ["M3" M3] ["M4" M4] ["M5" M5]
+             ["F1" F1] ["F2" F2] ["F3" F3] ["F4" F4] ["F5" F5]])
 
 (let [words (->> (slurp (find-dict))
                  clojure.string/split-lines
                  (filter #(re-matches #"[a-z]{4,}" %))
                  shuffle
-                 (take 100))
-      voice-cycle (cycle voices)]
+                 (take 50)
+                 (partition-all 5))]
   (ensure-server)
-  (doseq [[word voice] (map vector words voice-cycle)]
-    (println word)
-    (perform (say voice word))))
+  (doseq [[[voice-name voice] batch] (map vector voices words)]
+    (println (str "--- " voice-name " ---"))
+    (println (clojure.string/join ", " batch))
+    (perform (apply say voice (interpose "," batch)))))
