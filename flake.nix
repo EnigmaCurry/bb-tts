@@ -3,28 +3,28 @@
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    supertonic.url = "github:EnigmaCurry/supertonic-py-flake";
+    supertonic.inputs.nixpkgs.follows = "nixpkgs";
   };
 
-  outputs = { self, nixpkgs }:
+  outputs = { self, nixpkgs, supertonic }:
     let
       system = "x86_64-linux";
       pkgs = nixpkgs.legacyPackages.${system};
+      supertonic-serve = supertonic.packages.${system}.serve;
     in {
+      packages.${system} = {
+        default = pkgs.writeShellScriptBin "bb-tts" ''
+          exec ${pkgs.babashka}/bin/bb ${./bb-tts.clj} "$@"
+        '';
+        serve = supertonic-serve;
+      };
+
       devShells.${system}.default = pkgs.mkShell {
         buildInputs = [
           pkgs.babashka
-          pkgs.python313
-          pkgs.stdenv.cc.cc.lib
-          pkgs.zlib
-          pkgs.libsndfile
+          supertonic-serve
         ];
-        shellHook = ''
-          export LD_LIBRARY_PATH="${pkgs.stdenv.cc.cc.lib}/lib:${pkgs.zlib}/lib:${pkgs.libsndfile}/lib:''${LD_LIBRARY_PATH:-}"
-          if [ ! -d .venv ]; then
-            python3 -m venv .venv
-            .venv/bin/pip install 'supertonic[serve]' -q
-          fi
-        '';
       };
     };
 }
