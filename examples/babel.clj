@@ -50,85 +50,41 @@
                 [(gword)]))
             (range n))))
 
-;; --- English word pools (from madlibs phraseology) ---
+;; --- Translation dialog templates ---
+;; These fit the premise: two researchers on a phone call translating
+;; alien tablets. English structure degrades as the alien language
+;; seeps into their speech.
 
-(def nouns
-  ["penguin" "robot" "wizard" "dragon" "pirate" "professor" "vampire"
-   "mermaid" "goblin" "dinosaur" "unicorn" "ninja" "octopus" "walrus"
-   "yeti" "flamingo" "jellyfish" "kangaroo" "hedgehog" "platypus"
-   "elephant" "giraffe" "jackal" "scarecrow" "gargoyle"])
+;; Tablet reading — pure alien passages
+(defn tablet-passage []
+  (gphrase (+ 5 (rand-int 8))))
 
-(def verbs-past
-  ["launched" "devoured" "befriended" "juggled" "serenaded" "discovered"
-   "hypnotized" "outsmarted" "enchanted" "levitated" "mesmerized"
-   "obliterated" "vaporized" "wrangled" "zapped" "betrayed"
-   "celebrated" "frightened" "hugged" "lassoed"])
-
-(def verbs-present
-  ["launches" "devours" "befriends" "juggles" "serenades" "discovers"
-   "hypnotizes" "outsmarts" "enchants" "levitates" "mesmerizes"
-   "obliterates" "vaporizes" "wrangles" "zaps" "betrays"
-   "celebrates" "frightens" "hugs" "lassoes"])
-
-(def adjectives
-  ["fluffy" "enormous" "invisible" "suspicious" "radioactive" "furious"
-   "majestic" "bewildered" "spectacular" "ferocious" "magnificent"
-   "peculiar" "terrifying" "mischievous" "legendary" "thunderous"
-   "volcanic" "whimsical" "ancient" "dazzling" "nefarious" "luminous"])
-
-(def adverbs
-  ["frantically" "elegantly" "suspiciously" "heroically" "accidentally"
-   "dramatically" "mysteriously" "recklessly" "triumphantly"
-   "wildly" "absurdly" "gleefully" "haphazardly" "defiantly"])
-
-(def locations
-  ["on the moon" "inside a volcano" "in the library"
-   "under the bed" "in a bouncy castle" "on a pirate ship"
-   "at the dentist" "inside a whale" "at a disco"
-   "in a cave" "in a treehouse" "at a laundromat" "under a waterfall"])
-
-;; --- Pidgin sentence generators ---
-;; These mix English structure with glossolalia substitutions,
-;; creating a half-intelligible pidgin.
-
-(defn gnoun [] (if (< (rand) 0.4) (gword) (rand-nth nouns)))
-(defn gadj [] (if (< (rand) 0.5) (gword) (rand-nth adjectives)))
-(defn gverb [] (if (< (rand) 0.4) (gword) (rand-nth verbs-past)))
-(defn gverb-now [] (if (< (rand) 0.4) (gword) (rand-nth verbs-present)))
-(defn gadv [] (if (< (rand) 0.5) (gword) (rand-nth adverbs)))
-(defn gloc [] (if (< (rand) 0.35) (str "in the " (gword)) (rand-nth locations)))
-
-;; Sentence templates — English skeleton with glossolalia flesh
-(def story-templates
-  [;; declaration
-   (fn [] (format "The %s %s %s %s the %s %s."
-            (gadj) (gnoun) (gadv) (gverb) (gadj) (gnoun)))
-   ;; question
-   (fn [] (format "But why did the %s %s %s the %s %s?"
-            (gadj) (gnoun) (gverb) (gadj) (gnoun)))
-   ;; exclamation
-   (fn [] (format "%s! The %s %s %s %s!"
-            (gword) (gadj) (gnoun) (gadv) (gverb)))
-   ;; because
-   (fn [] (format "Because the %s %s was %s, %s, and %s."
-            (gadj) (gnoun) (gword) (gword) (gword)))
-   ;; location reveal
-   (fn [] (format "And so the %s %s went %s, where a %s %s %s %s everything."
-            (gadj) (gnoun) (gloc) (gadj) (gnoun) (gadv) (gverb)))
-   ;; consequence
-   (fn [] (format "After that, the %s was never the same. %s %s %s."
-            (gnoun) (gword) (gword) (gword)))
-   ;; pure glossolalia outburst
-   (fn [] (gphrase (+ 4 (rand-int 6))))
-   ;; agreement/disagreement
-   (fn [] (format "%s, yes, the %s %s %s it."
-            (gword) (gadj) (gnoun) (gadv) (gverb)))
-   ;; oath/invocation
-   (fn [] (format "By the %s of the %s %s! %s!"
-            (gword) (gadj) (gnoun) (gword)))
-   ;; plot twist
-   (fn [] (format "But then, %s, a %s %s %s the %s %s %s."
-            (gadv) (gadj) (gnoun) (gverb) (gadj) (gnoun) (gloc)))])
+;; Dialog templates for the translation context
+(def translation-templates
+  [;; reading a passage
+   (fn [] (format "The next line reads: %s." (tablet-passage)))
+   ;; cross-referencing
+   (fn [] (format "That matches the third tablet. %s, then %s." (gword) (gword)))
+   ;; noticing a pattern
+   (fn [] (format "Wait, %s appears again. That's the fourth time." (gword)))
+   ;; attempting to translate
+   (fn [] (format "I think %s means something like... movement? Or passage?" (gword)))
+   ;; correcting
+   (fn [] (format "No, look at the suffix. %s is the active form. %s is passive." (gword) (gword)))
+   ;; excitement
+   (fn [] (format "Do you see it? %s %s %s! It's a complete sentence!" (gword) (gword) (gword)))
+   ;; reading pure alien
+   (fn [] (tablet-passage))
+   ;; context from the dig
+   (fn [] (format "This was carved deeper than the others. %s %s." (gword) (gword)))
+   ;; language creeping in
+   (fn [] (format "The structure is... %s. I don't know how else to say it. %s." (gword) (gword)))
+   ;; doubt
+   (fn [] (format "Unless %s is a proper noun. Then this whole section changes meaning." (gword)))
+   ;; realization
+   (fn [] (format "%s. That's not a word, it's a name. %s." (gword) (gword)))
+   ;; paranoia
+   (fn [] (format "Did you hear that? ... Never mind. The next glyph is %s." (gword)))])
 
 ;; --- Dialog structure ---
 
@@ -140,50 +96,57 @@
 
 (def speakers [say-a say-b])
 
-;; Story acts — each act is a sequence of exchanges
+;; --- Dialog structure ---
+
 (defn exchange
-  "One speaker says a pidgin sentence."
-  []
-  (let [voice-fn (rand-nth speakers)
-        sentence ((rand-nth story-templates))]
-    (voice-fn sentence)))
-
-(defn rapid-exchange
-  "Quick back-and-forth, increasingly glossolalic."
-  []
-  (mapcat (fn [_]
-            (concat (say-a ((rand-nth story-templates)))
-                    (say-b ((rand-nth story-templates)))))
-          (range (+ 3 (rand-int 3)))))
-
-(defn slow-monologue
-  "One voice tells a stretch of the story, slower and more contemplative."
+  "One speaker says a translation-context line."
   []
   (let [voice-fn (rand-nth speakers)]
-    (vec (mapcat (fn [_] (voice-fn ((rand-nth story-templates))))
-                 (range (+ 2 (rand-int 3)))))))
+    (voice-fn ((rand-nth translation-templates)))))
 
-(defn unison-chant
-  "Both voices say the same glossolalia phrase together."
+(defn rapid-exchange
+  "Quick back-and-forth — cross-referencing tablets."
+  []
+  (mapcat (fn [_]
+            (concat (say-a ((rand-nth translation-templates)))
+                    (say-b ((rand-nth translation-templates)))))
+          (range (+ 3 (rand-int 3)))))
+
+(defn read-passage
+  "One voice reads a long alien passage, the other reacts."
+  []
+  (let [[reader reactor] (shuffle [say-a say-b])]
+    (concat
+      (reader (tablet-passage))
+      (reactor (rand-nth [(format "Again? Read it again." )
+                          (format "%s... yes, go on." (gword))
+                          (format "That changes everything.")
+                          (format "The same root as before. %s." (gword))])))))
+
+(defn unison-reading
+  "Both voices read the same alien phrase together — as if chanting."
   []
   (let [p (gphrase (+ 3 (rand-int 3)))]
     (concat (say-a p) (say-b p))))
 
-(defn argument
-  "Heated exchange — short bursts, fast, with interjections."
+(defn debate
+  "Heated exchange — disagreeing on interpretation."
   []
   (mapcat (fn [_]
-            (let [[first-voice second-voice] (shuffle speakers)]
-              (concat (first-voice ((rand-nth story-templates)))
-                      (second-voice (gphrase (+ 1 (rand-int 2)))))))
+            (let [[first-voice second-voice] (shuffle [say-a say-b])]
+              (concat (first-voice ((rand-nth translation-templates)))
+                      (second-voice (rand-nth [(format "No. That's %s, not %s." (gword) (gword))
+                                               (format "You're misreading the suffix.")
+                                               (format "Look at the glyph again. %s." (gword))
+                                               (gphrase (+ 1 (rand-int 2)))])))))
           (range (+ 3 (rand-int 3)))))
 
 (defn whispered-aside
-  "One voice drops to a slow aside, as if confiding a secret."
+  "One voice drops to a hushed tone, as if paranoid."
   []
-  (let [voice-fn (rand-nth speakers)]
-    (voice-fn (format "Listen... the %s %s... it %s the %s... %s..."
-                (gadj) (gnoun) (gverb-now) (gnoun) (gword)))))
+  (let [voice-fn (rand-nth [say-a say-b])]
+    (voice-fn (format "Listen... the %s inscription... it says %s... %s..."
+                (gword) (gword) (gword)))))
 
 ;; --- Conjugation suffixes for nonsense declension ---
 (def conjugation-suffixes
@@ -275,9 +238,9 @@
                        (say-a (format "This one is different. The root %s, it appears on both tablets, but conjugated opposite ways."
                                 (gword)))
                        (say-b "Read them both.")))]
-        ;; Act 3: Deeper translation — things get strange, more glossolalic
+        ;; Act 3: Deeper translation — noticing connections, reading passages
         act3 [tablet-entry
-              whispered-aside
+              read-passage
               (fn [] (concat
                        (say-b (format "Wait. That last form, %s, it appeared in the first chamber too."
                                 (gword)))
@@ -285,36 +248,42 @@
                                 (gword)))
                        (say-b (format "It makes %s %s." (gword) (gword)))
                        (say-a (format "%s! Exactly." (gword)))))
-              rapid-exchange
-              exchange]
+              whispered-aside
+              read-passage exchange]
         ;; Act 4: Conjugation play — they start riffing on each other's words
         act-conj [conjugation-list conjugation-list
                   dueling-conjugations]
-        ;; Act 5: Confrontation — argument over interpretation
-        act5 [argument
+        ;; Act 5: Argument over interpretation
+        act5 [debate
               (fn [] (concat
                        (say-b (format "No, no. The %s form is %s, not %s!"
-                                (gadj) (gword) (gword)))
-                       (say-a (format "I'm telling you, the tablet says %s! The %s %s %s the %s!"
-                                (gword) (gadj) (gnoun) (gverb) (gnoun)))
+                                (gword) (gword) (gword)))
+                       (say-a (format "I'm telling you, the tablet says %s! %s %s %s!"
+                                (gword) (gword) (gword) (gword)))
                        (say-b (laugh))
                        (say-b (format "%s! You're reading it upside down!" (gword)))))
-              unison-chant rapid-exchange]
-        ;; Act 6: Wrapping up
-        act6 [(fn [] (concat
+              unison-reading rapid-exchange]
+        ;; Act 6: The language takes over — mostly alien, fragments of English
+        act6 [read-passage
+              (fn [] (concat
+                       (say-a (format "I can't... the words are... %s. I think in %s now." (gword) (gword)))
+                       (say-b (format "%s. I know. Me too." (gword)))))
+              unison-reading]
+        ;; Act 7: Wrapping up — paranoia, sign off
+        act7 [(fn [] (concat
                        (say-b "We need to stop. Someone might be listening.")
                        (say-a (format "One more. The final tablet. Root word: %s." (gword)))
                        (say-b "Go.")))
               tablet-entry
               (fn [] (concat
-                       (say-a (format "That's it. That's all twelve tablets. %s." (gword)))
+                       (say-a (format "That's it. That's all of them. %s." (gword)))
                        (say-b "I have it all. Same time tomorrow?")
                        (say-a (format "%s. Tomorrow." (gword)))
                        (say-b "Be careful.")
                        [(pause 0.3)]
                        (say-a (gword))
                        [(pause 1.5)]))]
-        all-sections (concat act1 act2 act3 act-conj act5 act6)]
+        all-sections (concat act1 act2 act3 act-conj act5 act6 act7)]
     (vec (mapcat (fn [f] (concat (f) [(pause 0.6)])) all-sections))))
 
 ;; --- Main ---
