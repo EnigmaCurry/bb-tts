@@ -221,6 +221,63 @@
       (byte-array 0)
       (java.util.Arrays/copyOfRange pcm (int (* start 2)) (int (* end 2))))))
 
+(defn- write-sample
+  "Write a 16-bit signed LE sample to a byte array at sample index."
+  [^bytes pcm i value]
+  (let [offset (* i 2)
+        clamped (max -32768 (min 32767 value))]
+    (aset-byte pcm offset (unchecked-byte (bit-and clamped 0xFF)))
+    (aset-byte pcm (+ offset 1) (unchecked-byte (bit-and (bit-shift-right clamped 8) 0xFF)))))
+
+(defn- peak-level
+  "Find the peak absolute sample value in 16-bit PCM data."
+  [^bytes pcm]
+  (let [num-samples (quot (alength pcm) 2)]
+    (loop [i 0 peak 0]
+      (if (>= i num-samples)
+        peak
+        (recur (inc i) (max peak (Math/abs (int (sample-at pcm i)))))))))
+
+(defn- normalize-pcm
+  "Normalize 16-bit PCM data to a target peak level (0.0-1.0 of max)."
+  [^bytes pcm target]
+  (let [num-samples (quot (alength pcm) 2)
+        peak (peak-level pcm)]
+    (if (or (zero? peak) (zero? num-samples))
+      pcm
+      (let [gain (/ (* target 32767.0) peak)
+            result (byte-array (alength pcm))]
+        (dotimes [i num-samples]
+          (write-sample result i (int (* gain (sample-at pcm i)))))
+        result))))
+
+(defn- compress-pcm
+  "Apply simple soft-knee compression to 16-bit PCM data.
+   threshold: 0.0-1.0, level above which compression kicks in
+   ratio: compression ratio (e.g. 3.0 means 3:1)"
+  [^bytes pcm threshold ratio]
+  (let [num-samples (quot (alength pcm) 2)
+        thresh-val (* threshold 32767.0)
+        result (byte-array (alength pcm))]
+    (dotimes [i num-samples]
+      (let [sample (double (sample-at pcm i))
+            sign (if (neg? sample) -1.0 1.0)
+            abs-sample (Math/abs sample)]
+        (if (<= abs-sample thresh-val)
+          (write-sample result i (int sample))
+          (let [excess (- abs-sample thresh-val)
+                compressed (+ thresh-val (/ excess ratio))
+                out (* sign (min compressed 32767.0))]
+            (write-sample result i (int out))))))
+    result))
+
+(defn- process-pcm
+  "Apply compression then normalization to 16-bit PCM data."
+  [^bytes pcm]
+  (-> pcm
+      (compress-pcm 0.5 3.0)
+      (normalize-pcm 0.85)))
+
 (defn- concat-wavs
   "Concatenate multiple WAV byte arrays into a single WAV."
   [wav-list]
@@ -301,7 +358,7 @@
                           wav ;; already raw PCM silence
                           (let [offset (int (wav-data-offset wav))
                                 raw (java.util.Arrays/copyOfRange ^bytes wav offset (int (alength ^bytes wav)))]
-                            (trim-pcm raw 200))))
+                            (-> raw (trim-pcm 200) process-pcm))))
                       wavs segs)
         ;; Insert gap between each chunk (not before first or after last)
         pcm-chunks (vec (interpose gap trimmed))
