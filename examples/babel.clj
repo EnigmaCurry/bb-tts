@@ -221,10 +221,8 @@
 ;; --- Main ---
 
 (ensure-server)
-;; Telephone bandpass + distance: voices sound far away
-(alter-var-root #'*sox-effects* (constantly ["sinc" "300-3400"
-                                             "reverb" "60" "70" "90" "50"
-                                             "gain" "-4"]))
+;; Telephone bandpass on voices
+(alter-var-root #'*sox-effects* (constantly ["sinc" "300-3400"]))
 
 (def duration 120)
 (def bg-file (str (System/getProperty "java.io.tmpdir") "/babel_bg.wav"))
