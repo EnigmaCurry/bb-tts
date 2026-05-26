@@ -355,6 +355,75 @@
           pan (or (:pan seg) 0.0)]
       (mono->stereo processed pan))))
 
+(defn- synthesize-all
+  "Synthesize all segments into a sequence of stereo PCM byte arrays with gaps."
+  [segments]
+  (let [segs (vec (flatten segments))
+        gap (silence-bytes 0.15)]
+    (mapcat (fn [[i seg]]
+              (when (and *debug* (:text seg))
+                (binding [*out* *err*]
+                  (println (format "[%s] %s" (:voice seg) (:text seg)))))
+              (if (zero? i)
+                [(synthesize-seg seg)]
+                [gap (synthesize-seg seg)]))
+            (map-indexed vector segs))))
+
+(defn- write-wav-file
+  "Write stereo 16-bit 44100Hz PCM chunks to a WAV file."
+  [chunks output-file]
+  (let [pcm-data (mapv identity chunks)
+        total-pcm (reduce + (map count pcm-data))
+        header-size 44
+        result (byte-array (+ header-size total-pcm))
+        buf (doto (java.nio.ByteBuffer/wrap result)
+              (.order java.nio.ByteOrder/LITTLE_ENDIAN))]
+    ;; RIFF header
+    (.put buf (.getBytes "RIFF"))
+    (.putInt buf (- (+ header-size total-pcm) 8))
+    (.put buf (.getBytes "WAVE"))
+    ;; fmt chunk — stereo 16-bit 44100Hz
+    (.put buf (.getBytes "fmt "))
+    (.putInt buf 16)          ;; chunk size
+    (.putShort buf (short 1)) ;; PCM format
+    (.putShort buf (short 2)) ;; channels
+    (.putInt buf 44100)       ;; sample rate
+    (.putInt buf 176400)      ;; byte rate (44100 * 2 * 2)
+    (.putShort buf (short 4)) ;; block align (channels * bytes per sample)
+    (.putShort buf (short 16));; bits per sample
+    ;; data chunk
+    (.put buf (.getBytes "data"))
+    (.putInt buf total-pcm)
+    ;; PCM data
+    (doseq [^bytes chunk pcm-data]
+      (.put buf chunk))
+    (io/copy result (io/file output-file))
+    output-file))
+
+(defn render
+  "Synthesize all segments and write to a WAV file.
+   Optionally applies reverb if *reverb* is set."
+  [output-file & segments]
+  (ensure-server)
+  (let [chunks (synthesize-all segments)
+        raw-file (str output-file ".raw")]
+    (if *reverb*
+      (let [[rev hf room stereo] *reverb*
+            ;; Write raw PCM, process with sox for reverb, output WAV
+            tmp-raw (java.io.File/createTempFile "bb-tts-render-" ".raw")]
+        (.deleteOnExit tmp-raw)
+        (with-open [out (io/output-stream tmp-raw)]
+          (doseq [^bytes chunk chunks]
+            (.write out chunk)))
+        @(proc/process ["sox"
+                        "-t" "raw" "-r" "44100" "-c" "2" "-e" "signed" "-b" "16" (str tmp-raw)
+                        output-file
+                        "reverb" (str rev) (str hf) (str room) (str stereo)]
+                       {:out :inherit :err (io/file "/dev/null")})
+        (.delete tmp-raw))
+      (write-wav-file chunks output-file))
+    output-file))
+
 (defn perform
   "Synthesize segments with streaming playback — starts playing as soon
    as the first segment is ready while continuing to render ahead."
