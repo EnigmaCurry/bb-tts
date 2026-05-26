@@ -27,6 +27,22 @@
       (json/parse-string (:body resp) true))
     (catch Exception _e nil)))
 
+(defn ensure-server [opts]
+  (when-not (health opts)
+    (binding [*out* *err*]
+      (println "Starting supertonic server..."))
+    (proc/process ["supertonic-serve"
+                   "--host" (:host opts)
+                   "--port" (str (:port opts))]
+                  {:out :inherit :err :inherit})
+    (loop [attempts 60]
+      (cond
+        (health opts)   true
+        (pos? attempts) (do (Thread/sleep 500) (recur (dec attempts)))
+        :else           (do (binding [*out* *err*]
+                              (println "Error: server failed to start"))
+                            (System/exit 1))))))
+
 (defn list-voices [opts]
   (let [resp (http/get (str (base-url opts) "/v1/styles")
                        {:client http-client})
@@ -83,11 +99,12 @@
       [cmd & rest-args] args]
   (case cmd
     "say"     (if (seq rest-args)
-                (speak (clojure.string/join " " rest-args) opts)
+                (do (ensure-server opts)
+                    (speak (clojure.string/join " " rest-args) opts))
                 (do (println "Error: no text provided")
                     (System/exit 1)))
-    "voices"  (print-voices opts)
-    "health"  (if-let [h (health opts)]
+    "voices"  (do (ensure-server opts) (print-voices opts))
+    "health"  (if-let [h (do (ensure-server opts) (health opts))]
                 (println (json/generate-string h {:pretty true}))
                 (do (println "Server not reachable")
                     (System/exit 1)))
