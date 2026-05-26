@@ -1,6 +1,6 @@
 # bb-tts
 
-Text-to-speech powered by [Supertonic](https://github.com/supertone-inc/supertonic-py) and scripted with [Babashka](https://babashka.org). Runs entirely on-device using CPU inference. No cloud APIs, no GPU required.
+Text-to-speech powered by [Supertonic](https://github.com/supertone-inc/supertonic-py) and scripted with [Babashka](https://babashka.org). Runs entirely on-device using CPU inference.
 
 Includes a CLI tool and a Clojure DSL for composing multi-voice speech with expressions, pauses, and streaming playback.
 
