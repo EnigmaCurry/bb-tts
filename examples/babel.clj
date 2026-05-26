@@ -272,13 +272,13 @@
       (println (str "Done: " render-file))))
   (do
     (println "=== Babel ===\n")
+    ;; Play ringtone first, then start modem + voices together
+    @(proc/process ["paplay" ring-file] {:out :inherit :err :inherit})
     (def bg-player (proc/process
                      ["bash" "-c"
                       (str "sox " bg-file " -t raw -r 44100 -c 2 -e signed -b 16 - repeat 100"
                            " | paplay --raw --format=s16le --rate=44100 --channels=2")]
                      {:out :inherit :err (io/file "/dev/null")}))
-    ;; Play ringtone, then stream voices live
-    @(proc/process ["paplay" ring-file] {:out :inherit :err :inherit})
     (apply perform (build-story))
     (future (Thread/sleep 3000) (.destroy (:proc bg-player)))
     @bg-player
