@@ -204,20 +204,26 @@
                          (say-b (laugh))
                          (say-b (format "%s! %s %s!"
                                   (gword) (gword) (gword))))))]
-        ;; Act 4: Resolution — slower, more glossolalic, trailing off
-        act4 [slow-monologue
-              unison-chant
-              (fn [] (with-speed 0.75
+        ;; Act 4: Wrapping up — summarizing, winding down
+        act4 [exchange
+              (fn [] (with-speed 0.95
                        (concat
-                         (say-a (format "And so... the %s %s... %s..."
+                         (say-a (format "So, the %s %s %s the %s. %s."
+                                  (gadj) (gnoun) (gverb) (gnoun) (gword)))
+                         (say-b (format "Right, right. And the %s %s, it %s."
                                   (gadj) (gnoun) (gword)))
-                         (say-b (format "%s... %s... %s..."
-                                  (gword) (gword) (gword)))
-                         (say-a (sigh))
-                         [(pause 1.0)]
-                         (say-b (gphrase 3))
-                         [(pause 0.5)]
-                         (say-a (gword))
+                         (say-a (format "Exactly. %s %s %s."
+                                  (gword) (gword) (gword))))))
+              ;; Act 5: Goodbye
+              (fn [] (with-speed 0.85
+                       (concat
+                         (say-b (format "Okay, I have to go. %s %s."
+                                  (gword) (gword)))
+                         (say-a (format "Yes, yes. %s. Talk soon."
+                                  (gword)))
+                         (say-b (format "%s. Goodbye." (gword)))
+                         [(pause 0.3)]
+                         (say-a "Goodbye.")
                          [(pause 1.5)])))]
         all-sections (concat act1 act2 act3 act4)]
     (vec (mapcat (fn [f] (concat (f) [(pause 0.6)])) all-sections))))
@@ -228,53 +234,53 @@
 ;; Telephone bandpass on voices
 (alter-var-root #'*sox-effects* (constantly ["sinc" "300-3400"]))
 
-(def duration 120)
-(def bg-file (str (System/getProperty "java.io.tmpdir") "/babel_bg.wav"))
-(def ring-file (str (System/getProperty "java.io.tmpdir") "/babel_ring.wav"))
-
-(println "Generating soundscape...")
-(let [drone-file (sfx/generate-drone duration (sfx/tmp "babel_drone")
-                   :freq1 55 :freq2 82 :pan 0.6)
-      birds-file (sfx/generate-birds duration (sfx/tmp "babel_birds"))]
-  (sfx/mix [[drone-file -3]
-            [birds-file -6]]
-           bg-file
-           :fade-in 4 :fade-out 6 :duration duration :gain -2)
-  (doseq [f [drone-file birds-file]]
-    (.delete (io/file f))))
+(def tmpdir (System/getProperty "java.io.tmpdir"))
+(def ring-file (str tmpdir "/babel_ring.wav"))
+(def voices-file (str tmpdir "/babel_voices.wav"))
+(def bg-file (str tmpdir "/babel_bg.wav"))
 
 (println "Generating ringtone...")
 (sfx/generate-ringtone 2 ring-file)
 
-(defn play-ring []
-  (let [p (proc/process ["paplay" ring-file]
-                        {:out :inherit :err :inherit})]
-    @p))
+(println "Rendering voices...")
+(apply render voices-file (build-story))
+
+(def voice-duration
+  (Double/parseDouble
+    (clojure.string/trim
+      (:out @(proc/process ["sox" "--info" "-D" voices-file] {:out :string})))))
+
+(println (format "Voice duration: %.1fs — generating modem soundscape..." voice-duration))
+(let [dur (+ voice-duration 3)
+      modem-file (sfx/generate-modem dur (sfx/tmp "babel_modem")
+                   :element-count (int (* dur 0.4))
+                   :gap-min 0.5 :gap-max 3.0)]
+  (sfx/mix [[modem-file -8]]
+           bg-file
+           :fade-in 2 :fade-out 4 :duration dur :gain -4)
+  (.delete (io/file modem-file)))
 
 (if render-file
   (do
     (println (str "Rendering to " render-file " ..."))
-    (let [voices-file (str (System/getProperty "java.io.tmpdir") "/babel_voices.wav")
-          intro-file (str (System/getProperty "java.io.tmpdir") "/babel_intro.wav")]
-      (apply render voices-file (build-story))
+    (let [intro-file (str tmpdir "/babel_intro.wav")]
       ;; Concat ringtone + voices, then mix with background
       @(proc/process ["sox" ring-file voices-file intro-file]
                      {:out :inherit :err (io/file "/dev/null")})
       (println "Mixing voices with background...")
       @(proc/process ["sox" "-m" intro-file bg-file render-file "norm"]
                      {:out :inherit :err (io/file "/dev/null")})
-      (.delete (io/file voices-file))
-      (.delete (io/file intro-file))
-      (.delete (io/file bg-file))
-      (.delete (io/file ring-file))
-      (println (str "Done: " render-file))))
+      (.delete (io/file intro-file))))
   (do
     (println "=== Babel ===\n")
     (def bg-player (proc/process ["paplay" bg-file]
                                  {:out :inherit :err :inherit}))
-    (play-ring)
+    ;; Play ringtone, then voices
+    @(proc/process ["paplay" ring-file] {:out :inherit :err :inherit})
     (apply perform (build-story))
-    (future (Thread/sleep 5000) (.destroy (:proc bg-player)))
-    @bg-player
-    (.delete (io/file bg-file))
-    (.delete (io/file ring-file))))
+    (future (Thread/sleep 3000) (.destroy (:proc bg-player)))
+    @bg-player))
+
+;; Cleanup
+(doseq [f [ring-file voices-file bg-file]]
+  (when (.exists (io/file f)) (.delete (io/file f))))

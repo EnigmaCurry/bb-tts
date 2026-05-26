@@ -58,6 +58,80 @@
     (doseq [f ring-files] (.delete (io/file f)))
     output-file))
 
+;; --- Modem ---
+
+(defn- generate-modem-element
+  "Generate a single modem-like sound element (tone, chirp, warble, or burst)."
+  [index]
+  (let [r (str *rate*)
+        f (tmp (str "modem_el_" index))
+        kind (rand-nth [:tone :chirp :warble :burst :dtmf])
+        dur (rand-float 0.3 1.8)]
+    (case kind
+      :tone   (let [freq (rand-nth [1200 1800 2100 2400 980 1650 2250])]
+                (sox "-n" "-r" r "-c" "1" f
+                     "synth" (str dur) "sine" (str freq)
+                     "fade" "0.02" (str dur) "0.02"
+                     "gain" "-12"))
+      :chirp  (let [f1 (+ 600 (rand-int 1800))
+                    f2 (+ 600 (rand-int 1800))]
+                (sox "-n" "-r" r "-c" "1" f
+                     "synth" (str dur) "sine" (str f1 ":" f2)
+                     "fade" "0.01" (str dur) "0.01"
+                     "gain" "-14"))
+      :warble (let [freq (rand-nth [1200 1800 2100])
+                    trem (rand-float 8.0 25.0)]
+                (sox "-n" "-r" r "-c" "1" f
+                     "synth" (str dur) "sine" (str freq)
+                     "tremolo" (str trem)
+                     "fade" "0.02" (str dur) "0.02"
+                     "gain" "-15"))
+      :burst  (sox "-n" "-r" r "-c" "1" f
+                   "synth" (str (rand-float 0.1 0.5)) "whitenoise"
+                   "sinc" "800-3200"
+                   "fade" "0.005" (str dur) "0.005"
+                   "gain" "-18")
+      :dtmf   (let [[fa fb] (rand-nth [[697 1209] [770 1336] [852 1477] [941 1633]])]
+                (sox "-n" "-r" r "-c" "1" f
+                     "synth" (str (rand-float 0.06 0.15)) "sine" (str fa) "sine" (str fb)
+                     "fade" "0.005" (str dur) "0.005"
+                     "gain" "-10")))
+    f))
+
+(defn generate-modem
+  "Generate a modem-like exchange track with elements panned left and right,
+   as if two sides are communicating. Returns a stereo WAV."
+  [duration output-file & {:keys [element-count gap-min gap-max]
+                           :or {element-count 40 gap-min 0.3 gap-max 2.5}}]
+  (let [r (str *rate*)
+        parts (atom [])]
+    (doseq [i (range element-count)]
+      (let [el-file (generate-modem-element i)
+            gap-dur (rand-float gap-min gap-max)
+            gap-file (tmp (str "modem_gap_" i))
+            panned-file (tmp (str "modem_pan_" i))
+            ;; Alternate left/right with some variation
+            pan (if (even? i) (rand-float 0.7 0.95) (rand-float 0.05 0.3))
+            l (str "1v" pan)
+            rv (str "1v" (- 1.0 pan))]
+        ;; Pan to stereo
+        (sox el-file panned-file "remix" l rv)
+        ;; Silence gap
+        (sox "-n" "-r" r "-c" "2" gap-file "trim" "0" (str gap-dur))
+        (swap! parts conj panned-file)
+        (swap! parts conj gap-file)))
+    ;; Concatenate all elements
+    (apply sox (concat @parts [(tmp "modem_raw")]))
+    ;; Trim to duration
+    (sox (tmp "modem_raw") output-file "trim" "0" (str duration) "norm" "-6")
+    ;; Cleanup
+    (doseq [i (range element-count)]
+      (.delete (io/file (tmp (str "modem_el_" i))))
+      (.delete (io/file (tmp (str "modem_gap_" i))))
+      (.delete (io/file (tmp (str "modem_pan_" i)))))
+    (.delete (io/file (tmp "modem_raw")))
+    output-file))
+
 ;; --- Fire ---
 
 (defn generate-fire
