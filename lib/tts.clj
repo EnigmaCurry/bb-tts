@@ -27,6 +27,9 @@
 
 (def ^:dynamic *server* {:host "127.0.0.1" :port 7788})
 (def ^:dynamic *debug* false)
+;; Reverb settings: [reverberance hf-damping room-scale stereo-depth]
+;; nil = no reverb. E.g. [30 50 80 40] for light room.
+(def ^:dynamic *reverb* nil)
 
 (def http-client (http/client {:version :http1.1}))
 
@@ -300,9 +303,31 @@
     (.delete tmp)))
 
 (defn- silence-bytes
-  "Generate raw PCM silence (16-bit, 44100Hz mono) for given seconds."
+  "Generate raw PCM stereo silence (16-bit, 44100Hz) for given seconds."
   [seconds]
-  (byte-array (int (* 44100 2 seconds))))
+  (byte-array (int (* 44100 4 seconds))))
+
+(defn- mono->stereo
+  "Convert mono 16-bit PCM to stereo with panning.
+   pan: -1.0 (full left) to 1.0 (full right), 0 = center."
+  [^bytes mono-pcm pan]
+  (let [num-samples (quot (alength mono-pcm) 2)
+        stereo (byte-array (* num-samples 4))
+        buf-in (doto (java.nio.ByteBuffer/wrap mono-pcm)
+                 (.order java.nio.ByteOrder/LITTLE_ENDIAN))
+        buf-out (doto (java.nio.ByteBuffer/wrap stereo)
+                  (.order java.nio.ByteOrder/LITTLE_ENDIAN))
+        ;; Equal-power panning
+        angle (* (+ pan 1.0) 0.25 Math/PI)
+        gain-l (Math/cos angle)
+        gain-r (Math/sin angle)]
+    (dotimes [i num-samples]
+      (let [sample (.getShort buf-in (* i 2))
+            left (max -32768 (min 32767 (int (* gain-l sample))))
+            right (max -32768 (min 32767 (int (* gain-r sample))))]
+        (.putShort buf-out (* i 4) (short left))
+        (.putShort buf-out (+ (* i 4) 2) (short right))))
+    stereo))
 
 (defn- seg->wav
   "Convert a segment to WAV bytes. Pauses become raw PCM silence."
@@ -315,17 +340,20 @@
   (and (:text seg) (clojure.string/starts-with? (:text seg) "<")))
 
 (defn- synthesize-seg
-  "Synthesize a segment and return processed PCM bytes (no WAV header)."
+  "Synthesize a segment and return stereo PCM bytes (no WAV header).
+   Respects :pan key (-1.0 left, 0 center, 1.0 right)."
   [seg]
   (if (= :pause (:type seg))
     (silence-bytes (:seconds seg))
     (let [wav (synthesize seg)
           offset (int (wav-data-offset wav))
           raw (java.util.Arrays/copyOfRange ^bytes wav offset (int (alength ^bytes wav)))
-          trimmed (trim-pcm raw 200)]
-      (if (expression-tag? seg)
-        trimmed
-        (normalize-pcm trimmed 0.85)))))
+          trimmed (trim-pcm raw 200)
+          processed (if (expression-tag? seg)
+                      trimmed
+                      (normalize-pcm trimmed 0.95))
+          pan (or (:pan seg) 0.0)]
+      (mono->stereo processed pan))))
 
 (defn perform
   "Synthesize segments with streaming playback — starts playing as soon
@@ -346,11 +374,24 @@
                        (.put queue (synthesize-seg seg)))
                      (finally
                        (.put queue ::done))))
-        ;; Start paplay reading raw PCM from stdin
-        player (proc/process ["paplay" "--raw" "--format=s16le"
-                              "--rate=44100" "--channels=1"]
-                             {:in :pipe :out :inherit :err :inherit})
-        out (.getOutputStream (:proc player))]
+        ;; Start playback pipeline — optionally through sox for reverb
+        player (if *reverb*
+                 (let [[rev hf room stereo] *reverb*
+                       sox-proc (proc/process
+                                  ["sox" "-t" "raw" "-r" "44100" "-c" "2" "-e" "signed" "-b" "16" "-"
+                                   "-t" "raw" "-r" "44100" "-c" "2" "-e" "signed" "-b" "16" "-"
+                                   "reverb" (str rev) (str hf) (str room) (str stereo)]
+                                  {:in :pipe :out :pipe :err (io/file "/dev/null")})
+                       paplay (proc/process
+                                ["paplay" "--raw" "--format=s16le" "--rate=44100" "--channels=2"]
+                                {:in (:out sox-proc) :out :inherit :err :inherit})]
+                   {:proc (:proc sox-proc) :paplay paplay :sox sox-proc})
+                 (proc/process ["paplay" "--raw" "--format=s16le"
+                                "--rate=44100" "--channels=2"]
+                               {:in :pipe :out :inherit :err :inherit}))
+        out (if *reverb*
+              (.getOutputStream (:proc (:sox player)))
+              (.getOutputStream (:proc player)))]
     ;; Consumer: write PCM chunks to paplay as they arrive
     (try
       (loop []
@@ -361,5 +402,7 @@
             (recur))))
       (finally
         (.close out)
-        @player
+        (if *reverb*
+          (do @(:sox player) @(:paplay player))
+          @player)
         @producer))))

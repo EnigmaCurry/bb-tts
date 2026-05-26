@@ -3,7 +3,7 @@
 ;; Pure glossolalia ritual with fire, birds, drone, and drums.
 ;; Two voices (M5 and F5) panned left/right over a soundscape.
 
-(require '[tts :refer [perform say pause M5 F5 with-speed ensure-server]]
+(require '[tts :refer [perform say pause M5 F5 with-speed ensure-server *reverb*]]
          '[sfx :as sfx]
          '[babashka.process :as proc]
          '[clojure.java.io :as io])
@@ -63,8 +63,8 @@
 (defn pan-segs [segs pan]
   (mapv #(if (map? %) (assoc % :pan pan) %) (flatten segs)))
 
-(defn say-m [& parts] (pan-segs (apply say M5 parts) -0.5))
-(defn say-f [& parts] (pan-segs (apply say F5 parts) 0.5))
+(defn say-m [& parts] (pan-segs (apply say M5 parts) -0.2))
+(defn say-f [& parts] (pan-segs (apply say F5 parts) 0.2))
 
 (defn rapid-dialog []
   (concat
@@ -98,25 +98,21 @@
 ;; --- Main ---
 
 (ensure-server)
+;; Light room reverb on voices [reverberance hf-damping room-scale stereo-depth]
+(alter-var-root #'*reverb* (constantly [30 50 80 40]))
 
 (def duration 150)
 (def bg-file (str (System/getProperty "java.io.tmpdir") "/ritual_bg.wav"))
 
 (println "Generating soundscape...")
-(let [fire-file (sfx/generate-fire duration (sfx/tmp "fire_out"))
-      birds-file (sfx/generate-birds duration (sfx/tmp "birds_out")
-                   :rest-min 5 :rest-max 15 :phrase-count 15)
-      drone-file (sfx/generate-drone duration (sfx/tmp "drone_out")
+(let [drone-file (sfx/generate-drone duration (sfx/tmp "drone_out")
                    :pan 0.55)
       drums-file (sfx/generate-drums duration (sfx/tmp "drums_out"))]
-  (sfx/mix [[fire-file -4]
-            [birds-file -6]
-            [drone-file -3]
-            [drums-file -5]]
+  (sfx/mix [[drone-file 0]
+            [drums-file -2]]
            bg-file
-           :fade-in 3 :fade-out 5 :duration duration)
-  ;; Cleanup individual layers
-  (doseq [f [fire-file birds-file drone-file drums-file]]
+           :fade-in 3 :fade-out 5 :duration duration :gain 0)
+  (doseq [f [drone-file drums-file]]
     (.delete (io/file f))))
 
 (println "=== The Ritual ===\n")

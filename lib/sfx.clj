@@ -17,8 +17,17 @@
 (defn- tmp [name]
   (str (System/getProperty "java.io.tmpdir") "/sfx_" name ".wav"))
 
+(def sox-path
+  (or (some #(when (.exists (io/file %)) %)
+            ["/usr/bin/sox" "/run/current-system/sw/bin/sox"])
+      (first (filter #(.exists (io/file %))
+                     (map #(str % "/bin/sox")
+                          (filter #(re-find #"sox" %)
+                                  (map str (.listFiles (io/file "/nix/store")))))))
+      "sox"))
+
 (defn- sox [& args]
-  (let [result @(proc/process (map str (flatten ["sox" args]))
+  (let [result @(proc/process (map str (flatten [sox-path args]))
                               {:out :inherit :err (io/file "/dev/null")})]
     (when-not (zero? (:exit result))
       (binding [*out* *err*]
@@ -193,15 +202,21 @@
 
 (defn mix
   "Mix multiple WAV files with individual gains into a single output.
-   layers is a vector of [file gain-db] pairs."
-  [layers output-file & {:keys [fade-in fade-out duration]
-                         :or {fade-in 2 fade-out 3}}]
-  (let [mix-args (mapcat (fn [[file gain]]
-                           ["-t" "wav" (str "|sox " file " -p gain " (str gain))])
-                         layers)
+   layers is a vector of [file gain-db] pairs.
+   :gain sets final output gain in dB after normalization (e.g. -6 for half volume)."
+  [layers output-file & {:keys [fade-in fade-out duration gain]
+                         :or {fade-in 2 fade-out 3 gain 0}}]
+  ;; Pre-apply gain to each layer
+  (let [gained-files (mapv (fn [[file g]]
+                             (let [out (tmp (str "mix_g_" (hash file)))]
+                               (sox file out "gain" (str g))
+                               out))
+                           layers)
         dur-args (if duration [(str duration)] [])]
-    (apply sox "-m" (concat mix-args
+    (apply sox "-m" (concat gained-files
                             [output-file "fade" (str fade-in)]
                             dur-args
-                            [(str fade-out) "norm"])))
+                            [(str fade-out) "gain" (str gain)]))
+    ;; Cleanup gained files
+    (doseq [f gained-files] (.delete (io/file f))))
   output-file)
