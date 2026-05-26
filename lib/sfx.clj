@@ -67,19 +67,15 @@
   (mapv #(+ 80 (* % 4.6)) (range 48)))
 
 (defn- generate-ft8-transmission
-  "Generate a single FT8-like transmission: a sequence of frequency-hopping
-   tones, each ~0.16s, creating a modulated warble."
+  "FT8-style frequency-hopping tone sequence."
   [index]
   (let [r (str *rate*)
-        ;; Each transmission is 8-20 tone slots
         slot-count (+ 8 (rand-int 13))
         slot-dur 0.16
         total-dur (* slot-count slot-dur)
-        ;; Pick a base frequency band and hop around it
         base-idx (+ 5 (rand-int 35))
         slot-files (mapv (fn [s]
                            (let [sf (tmp (str "ft8_slot_" index "_" s))
-                                 ;; Hop within ±6 slots of base
                                  freq (nth ft8-freqs
                                         (max 0 (min 47 (+ base-idx (- (rand-int 13) 6)))))]
                              (sox "-n" "-r" r "-c" "1" sf
@@ -88,12 +84,67 @@
                              sf))
                          (range slot-count))
         f (tmp (str "modem_el_" index))]
-    ;; Concatenate slots into one transmission, apply lowpass + envelope
     (apply sox (concat slot-files [f "lowpass" "350" "gain" "-14"
                                    "fade" "0.03" (str total-dur) "0.03"]))
     (doseq [s (range slot-count)]
       (.delete (io/file (tmp (str "ft8_slot_" index "_" s)))))
     f))
+
+(defn- generate-slow-sweep
+  "Slow frequency sweep — a carrier drifting between two low frequencies."
+  [index]
+  (let [r (str *rate*)
+        f (tmp (str "modem_el_" index))
+        dur (rand-float 1.5 4.0)
+        f1 (+ 60 (rand-int 120))
+        f2 (+ 60 (rand-int 120))]
+    (sox "-n" "-r" r "-c" "1" f
+         "synth" (str dur) "sine" (str f1 ":" f2)
+         "lowpass" "300"
+         "fade" "0.05" (str dur) "0.05"
+         "gain" "-16")
+    f))
+
+(defn- generate-pulsed-drone
+  "Rhythmic pulsing at a low frequency — like a slow data heartbeat."
+  [index]
+  (let [r (str *rate*)
+        f (tmp (str "modem_el_" index))
+        dur (rand-float 2.0 5.0)
+        freq (+ 70 (rand-int 100))
+        pulse-rate (rand-float 2.0 8.0)]
+    (sox "-n" "-r" r "-c" "1" f
+         "synth" (str dur) "sine" (str freq)
+         "tremolo" (str pulse-rate) "80"
+         "lowpass" "250"
+         "fade" "0.05" (str dur) "0.05"
+         "gain" "-16")
+    f))
+
+(defn- generate-warble
+  "Two close frequencies beating against each other — a wobbly carrier."
+  [index]
+  (let [r (str *rate*)
+        f (tmp (str "modem_el_" index))
+        dur (rand-float 1.0 3.0)
+        base (+ 80 (rand-int 120))
+        offset (rand-float 1.5 4.0)]
+    (sox "-n" "-r" r "-c" "1" f
+         "synth" (str dur) "sine" (str base) "sine" (str (+ base offset))
+         "lowpass" "280"
+         "fade" "0.03" (str dur) "0.03"
+         "gain" "-15")
+    f))
+
+(defn- generate-modem-element
+  "Randomly pick a modem element type."
+  [index]
+  (let [kind (rand-nth [:ft8 :ft8 :sweep :pulse :warble])]
+    (case kind
+      :ft8    (generate-ft8-transmission index)
+      :sweep  (generate-slow-sweep index)
+      :pulse  (generate-pulsed-drone index)
+      :warble (generate-warble index))))
 
 (defn generate-modem
   "Generate an FT8-style exchange track with transmissions panned left and right,
@@ -103,7 +154,7 @@
   (let [r (str *rate*)
         parts (atom [])]
     (doseq [i (range element-count)]
-      (let [el-file (generate-ft8-transmission i)
+      (let [el-file (generate-modem-element i)
             gap-dur (rand-float gap-min gap-max)
             gap-file (tmp (str "modem_gap_" i))
             panned-file (tmp (str "modem_pan_" i))
