@@ -221,7 +221,7 @@
 ;; --- Main ---
 
 (ensure-server)
-(alter-var-root #'*reverb* (constantly [35 45 70 50]))
+(alter-var-root #'*reverb* (constantly [20 40 60 30]))
 
 (def duration 120)
 (def bg-file (str (System/getProperty "java.io.tmpdir") "/babel_bg.wav"))
