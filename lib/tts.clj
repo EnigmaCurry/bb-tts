@@ -221,62 +221,29 @@
       (byte-array 0)
       (java.util.Arrays/copyOfRange pcm (int (* start 2)) (int (* end 2))))))
 
-(defn- write-sample
-  "Write a 16-bit signed LE sample to a byte array at sample index."
-  [^bytes pcm i value]
-  (let [offset (* i 2)
-        clamped (max -32768 (min 32767 value))]
-    (aset-byte pcm offset (unchecked-byte (bit-and clamped 0xFF)))
-    (aset-byte pcm (+ offset 1) (unchecked-byte (bit-and (bit-shift-right clamped 8) 0xFF)))))
-
-(defn- peak-level
-  "Find the peak absolute sample value in 16-bit PCM data."
-  [^bytes pcm]
-  (let [num-samples (quot (alength pcm) 2)]
-    (loop [i 0 peak 0]
-      (if (>= i num-samples)
-        peak
-        (recur (inc i) (max peak (Math/abs (int (sample-at pcm i)))))))))
-
 (defn- normalize-pcm
-  "Normalize 16-bit PCM data to a target peak level (0.0-1.0 of max)."
+  "Normalize 16-bit PCM to target peak (0.0-1.0) using ByteBuffer for speed."
   [^bytes pcm target]
-  (let [num-samples (quot (alength pcm) 2)
-        peak (peak-level pcm)]
-    (if (or (zero? peak) (zero? num-samples))
+  (let [buf (doto (java.nio.ByteBuffer/wrap pcm)
+              (.order java.nio.ByteOrder/LITTLE_ENDIAN))
+        num-samples (quot (alength pcm) 2)
+        ;; Pass 1: find peak
+        peak (loop [i 0 p (int 0)]
+               (if (>= i num-samples)
+                 p
+                 (recur (inc i) (max p (Math/abs (int (.getShort buf (* i 2))))))))]
+    (if (zero? peak)
       pcm
-      (let [gain (/ (* target 32767.0) peak)
-            result (byte-array (alength pcm))]
+      (let [gain (/ (* target 32767.0) (double peak))
+            result (byte-array (alength pcm))
+            out (doto (java.nio.ByteBuffer/wrap result)
+                  (.order java.nio.ByteOrder/LITTLE_ENDIAN))]
+        ;; Pass 2: scale
         (dotimes [i num-samples]
-          (write-sample result i (int (* gain (sample-at pcm i)))))
+          (let [sample (.getShort buf (* i 2))
+                scaled (max -32768 (min 32767 (int (* gain sample))))]
+            (.putShort out (* i 2) (short scaled))))
         result))))
-
-(defn- compress-pcm
-  "Apply simple soft-knee compression to 16-bit PCM data.
-   threshold: 0.0-1.0, level above which compression kicks in
-   ratio: compression ratio (e.g. 3.0 means 3:1)"
-  [^bytes pcm threshold ratio]
-  (let [num-samples (quot (alength pcm) 2)
-        thresh-val (* threshold 32767.0)
-        result (byte-array (alength pcm))]
-    (dotimes [i num-samples]
-      (let [sample (double (sample-at pcm i))
-            sign (if (neg? sample) -1.0 1.0)
-            abs-sample (Math/abs sample)]
-        (if (<= abs-sample thresh-val)
-          (write-sample result i (int sample))
-          (let [excess (- abs-sample thresh-val)
-                compressed (+ thresh-val (/ excess ratio))
-                out (* sign (min compressed 32767.0))]
-            (write-sample result i (int out))))))
-    result))
-
-(defn- process-pcm
-  "Apply compression then normalization to 16-bit PCM data."
-  [^bytes pcm]
-  (-> pcm
-      (compress-pcm 0.5 3.0)
-      (normalize-pcm 0.85)))
 
 (defn- concat-wavs
   "Concatenate multiple WAV byte arrays into a single WAV."
@@ -358,7 +325,7 @@
                           wav ;; already raw PCM silence
                           (let [offset (int (wav-data-offset wav))
                                 raw (java.util.Arrays/copyOfRange ^bytes wav offset (int (alength ^bytes wav)))]
-                            (-> raw (trim-pcm 200) process-pcm))))
+                            (-> raw (trim-pcm 200) (normalize-pcm 0.85)))))
                       wavs segs)
         ;; Insert gap between each chunk (not before first or after last)
         pcm-chunks (vec (interpose gap trimmed))
