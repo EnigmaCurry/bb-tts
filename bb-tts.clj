@@ -20,11 +20,21 @@
 (defn base-url [{:keys [host port]}]
   (str "http://" host ":" port))
 
+(defmacro timed [label & body]
+  `(let [start# (System/currentTimeMillis)
+         result# (do ~@body)
+         elapsed# (- (System/currentTimeMillis) start#)]
+     (binding [*out* *err*]
+       (println (format "%s: %dms" ~label elapsed#)))
+     result#))
+
 (defn health [opts]
   (try
-    (let [resp (http/get (str (base-url opts) "/v1/health")
-                         {:client http-client})]
-      (json/parse-string (:body resp) true))
+    (let [result (timed "Health check"
+                   (let [resp (http/get (str (base-url opts) "/v1/health")
+                                        {:client http-client})]
+                     (json/parse-string (:body resp) true)))]
+      result)
     (catch Exception _e nil)))
 
 (defn ensure-server [opts]
@@ -58,15 +68,17 @@
                    :lang (:lang opts)
                    :speed (:speed opts)
                    :response_format (:format opts)})
-        resp (http/post (str (base-url opts) "/v1/tts")
-                        {:client http-client
-                         :headers {"content-type" "application/json"}
-                         :body payload
-                         :as :bytes})
+        resp (timed "Synthesize"
+               (http/post (str (base-url opts) "/v1/tts")
+                          {:client http-client
+                           :headers {"content-type" "application/json"}
+                           :body payload
+                           :as :bytes}))
         tmp (java.io.File/createTempFile "bb-tts-" ".wav")]
     (.deleteOnExit tmp)
     (io/copy (:body resp) tmp)
-    @(proc/process ["paplay" (str tmp)])
+    (timed "Playback"
+      @(proc/process ["paplay" (str tmp)]))
     (.delete tmp)))
 
 (defn print-voices [opts]
