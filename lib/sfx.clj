@@ -46,15 +46,17 @@
   (let [r (str *rate*)
         ring-files (mapv (fn [i]
                            (let [f (tmp (str "ring_" i))]
-                             ;; 2s dual-tone ring
-                             (sox "-n" "-r" r "-c" "2" f
+                             ;; 2s dual-tone ring (mono)
+                             (sox "-n" "-r" r "-c" "1" f
                                   "synth" "2" "sine" "440" "sine" "480"
                                   "gain" "-6"
                                   "pad" "0" "3")
                              f))
                          (range rings))]
-    ;; Concatenate rings
-    (apply sox (concat ring-files [output-file]))
+    ;; Concatenate rings (mono), then convert to stereo
+    (apply sox (concat ring-files [(tmp "ring_mono")]))
+    (sox (tmp "ring_mono") output-file "channels" "2")
+    (.delete (io/file (tmp "ring_mono")))
     (doseq [f ring-files] (.delete (io/file f)))
     output-file))
 
