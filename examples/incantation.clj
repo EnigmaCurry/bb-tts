@@ -3,10 +3,12 @@
 ;; Pure glossolalia ritual with fire, birds, drone, and drums.
 ;; Two voices (M5 and F5) panned left/right over a soundscape.
 
-(require '[tts :refer [perform say pause M5 F5 with-speed ensure-server *reverb*]]
+(require '[tts :refer [perform render say pause M5 F5 with-speed ensure-server *reverb*]]
          '[sfx :as sfx]
          '[babashka.process :as proc]
          '[clojure.java.io :as io])
+
+(def render-file (first *command-line-args*))
 
 ;; --- Glossolalia generator ---
 
@@ -95,6 +97,21 @@
   (let [p (phrase 3)]
     (concat (say-m p) (say-f p))))
 
+;; --- Build all speech segments ---
+
+(defn build-speech []
+  (let [sections [rapid-dialog echo-section monologue rapid-dialog
+                  echo-section monologue rapid-dialog echo-section unison]
+        section-segs (mapcat (fn [f] (concat (f) [(pause 0.8)])) sections)
+        w (gword)
+        final (with-speed 0.7
+                (say-m (str w ". " w ". " w "."))
+                (say-f (str w ". " w ". " w "."))
+                (pause 0.5)
+                (say-m w)
+                (say-f w))]
+    (concat section-segs final)))
+
 ;; --- Main ---
 
 (ensure-server)
@@ -115,31 +132,24 @@
   (doseq [f [drone-file drums-file]]
     (.delete (io/file f))))
 
-(println "=== The Ritual ===\n")
-
-;; Start background
-(def bg-player (proc/process ["paplay" bg-file]
-                             {:out :inherit :err :inherit}))
-
-;; Speech sections
-(def sections
-  [rapid-dialog echo-section monologue rapid-dialog
-   echo-section monologue rapid-dialog echo-section unison])
-
-(doseq [section-fn sections]
-  (apply perform (concat (section-fn) [(pause 0.8)])))
-
-;; Final chant
-(let [w (gword)]
-  (perform
-    (with-speed 0.7
-      (say-m (str w ". " w ". " w "."))
-      (say-f (str w ". " w ". " w "."))
-      (pause 0.5)
-      (say-m w)
-      (say-f w))))
-
-;; Let background fade out
-(future (Thread/sleep 5000) (.destroy (:proc bg-player)))
-@bg-player
-(.delete (io/file bg-file))
+(if render-file
+  ;; Render to file
+  (do
+    (println (str "Rendering to " render-file " ..."))
+    (let [voices-file (str (System/getProperty "java.io.tmpdir") "/ritual_voices.wav")]
+      (apply render voices-file (build-speech))
+      (println "Mixing voices with background...")
+      @(proc/process ["sox" "-m" voices-file bg-file render-file "norm"]
+                     {:out :inherit :err (io/file "/dev/null")})
+      (.delete (io/file voices-file))
+      (.delete (io/file bg-file))
+      (println (str "Done: " render-file))))
+  ;; Play live
+  (do
+    (println "=== The Ritual ===\n")
+    (def bg-player (proc/process ["paplay" bg-file]
+                                 {:out :inherit :err :inherit}))
+    (apply perform (build-speech))
+    (future (Thread/sleep 5000) (.destroy (:proc bg-player)))
+    @bg-player
+    (.delete (io/file bg-file))))
