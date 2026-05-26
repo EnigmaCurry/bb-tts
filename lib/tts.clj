@@ -192,6 +192,35 @@
         (+ i 8)
         (recur (+ i 8 (read-u32-le wav (+ i 4))))))))
 
+(defn- sample-at
+  "Read a 16-bit signed LE sample from a byte array at sample index."
+  [^bytes pcm i]
+  (let [offset (* i 2)
+        lo (bit-and (aget pcm offset) 0xFF)
+        hi (aget pcm (+ offset 1))]
+    (short (bit-or lo (bit-shift-left hi 8)))))
+
+(defn- trim-pcm
+  "Trim leading and trailing silence from 16-bit PCM data.
+   threshold is the absolute sample value below which is considered silence."
+  [^bytes pcm threshold]
+  (let [num-samples (quot (alength pcm) 2)
+        ;; Find first non-silent sample
+        start (loop [i 0]
+                (cond
+                  (>= i num-samples) i
+                  (> (Math/abs (int (sample-at pcm i))) threshold) i
+                  :else (recur (inc i))))
+        ;; Find last non-silent sample
+        end (loop [i (dec num-samples)]
+              (cond
+                (< i start) start
+                (> (Math/abs (int (sample-at pcm i))) threshold) (inc i)
+                :else (recur (dec i))))]
+    (if (>= start end)
+      (byte-array 0)
+      (java.util.Arrays/copyOfRange pcm (int (* start 2)) (int (* end 2))))))
+
 (defn- concat-wavs
   "Concatenate multiple WAV byte arrays into a single WAV."
   [wav-list]
@@ -266,12 +295,16 @@
         first-wav-idx (first (keep-indexed (fn [i seg] (when-not (= :pause (:type seg)) i)) segs))
         first-wav (nth wavs first-wav-idx)
         header-size (wav-data-offset first-wav)
-        pcm-chunks (mapv (fn [wav seg]
-                           (if (= :pause (:type seg))
-                             wav ;; already raw PCM
-                             (let [offset (int (wav-data-offset wav))]
-                               (java.util.Arrays/copyOfRange ^bytes wav offset (int (alength ^bytes wav))))))
-                         wavs segs)
+        gap (silence-bytes 0.15)
+        trimmed (mapv (fn [wav seg]
+                        (if (= :pause (:type seg))
+                          wav ;; already raw PCM silence
+                          (let [offset (int (wav-data-offset wav))
+                                raw (java.util.Arrays/copyOfRange ^bytes wav offset (int (alength ^bytes wav)))]
+                            (trim-pcm raw 200))))
+                      wavs segs)
+        ;; Insert gap between each chunk (not before first or after last)
+        pcm-chunks (vec (interpose gap trimmed))
         total-pcm (reduce + (map count pcm-chunks))
         result (byte-array (+ header-size total-pcm))]
     ;; Build combined WAV
