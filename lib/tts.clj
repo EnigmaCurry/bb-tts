@@ -153,12 +153,26 @@
   [& segments]
   (vec (flatten segments)))
 
+;; --- Pronunciation ---
+
+(def ^:dynamic *pronunciations*
+  {"REPL"      "repple"
+   "Clojure"   "closure"
+   "babashka"  "bah-bash-kah"
+   "nix"       "nicks"})
+
+(defn- apply-pronunciations [text]
+  (reduce (fn [s [from to]]
+            (clojure.string/replace s (re-pattern (str "(?i)\\b" (java.util.regex.Pattern/quote from) "\\b")) to))
+          text *pronunciations*))
+
 ;; --- Synthesis and playback ---
 
 (defn synthesize
   "Send text to the TTS server, return WAV bytes."
   [{:keys [text voice lang speed]}]
-  (let [payload (json/generate-string
+  (let [text (apply-pronunciations text)
+        payload (json/generate-string
                   {:text text
                    :voice (or voice *voice*)
                    :lang (or lang *lang*)
