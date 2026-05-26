@@ -37,6 +37,7 @@
           pkgs.babashka
           supertonic-serve
           pkgs.scowl
+          pkgs.sox
         ];
       };
     };
