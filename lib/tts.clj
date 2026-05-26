@@ -320,12 +320,16 @@
         first-wav (nth wavs first-wav-idx)
         header-size (wav-data-offset first-wav)
         gap (silence-bytes 0.15)
+        expression-tag? (fn [seg] (and (:text seg) (clojure.string/starts-with? (:text seg) "<")))
         trimmed (mapv (fn [wav seg]
                         (if (= :pause (:type seg))
                           wav ;; already raw PCM silence
                           (let [offset (int (wav-data-offset wav))
-                                raw (java.util.Arrays/copyOfRange ^bytes wav offset (int (alength ^bytes wav)))]
-                            (-> raw (trim-pcm 200) (normalize-pcm 0.85)))))
+                                raw (java.util.Arrays/copyOfRange ^bytes wav offset (int (alength ^bytes wav)))
+                                trimmed (trim-pcm raw 200)]
+                            (if (expression-tag? seg)
+                              trimmed ;; skip normalization for expression tags
+                              (normalize-pcm trimmed 0.85)))))
                       wavs segs)
         ;; Insert gap between each chunk (not before first or after last)
         pcm-chunks (vec (interpose gap trimmed))
