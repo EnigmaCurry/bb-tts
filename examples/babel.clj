@@ -236,51 +236,46 @@
 
 (def tmpdir (System/getProperty "java.io.tmpdir"))
 (def ring-file (str tmpdir "/babel_ring.wav"))
-(def voices-file (str tmpdir "/babel_voices.wav"))
 (def bg-file (str tmpdir "/babel_bg.wav"))
+
+;; Estimate voice duration generously — each section averages ~8s of speech
+;; plus pauses. 15 sections × 8s ≈ 120s, pad to 180s to err long.
+(def estimated-duration 180)
 
 (println "Generating ringtone...")
 (sfx/generate-ringtone 2 ring-file)
 
-(println "Rendering voices...")
-(apply render voices-file (build-story))
-
-(def voice-duration
-  (Double/parseDouble
-    (clojure.string/trim
-      (:out @(proc/process ["sox" "--info" "-D" voices-file] {:out :string})))))
-
-(println (format "Voice duration: %.1fs — generating modem soundscape..." voice-duration))
-(let [dur (+ voice-duration 3)
-      modem-file (sfx/generate-modem dur (sfx/tmp "babel_modem")
-                   :element-count (int (* dur 0.4))
+(println "Generating modem soundscape...")
+(let [modem-file (sfx/generate-modem estimated-duration (sfx/tmp "babel_modem")
+                   :element-count (int (* estimated-duration 0.4))
                    :gap-min 0.5 :gap-max 3.0)]
   (sfx/mix [[modem-file -8]]
            bg-file
-           :fade-in 2 :fade-out 4 :duration dur :gain -4)
+           :fade-in 2 :fade-out 4 :duration estimated-duration :gain -4)
   (.delete (io/file modem-file)))
 
 (if render-file
   (do
     (println (str "Rendering to " render-file " ..."))
-    (let [intro-file (str tmpdir "/babel_intro.wav")]
-      ;; Concat ringtone + voices, then mix with background
+    (let [voices-file (str tmpdir "/babel_voices.wav")
+          intro-file (str tmpdir "/babel_intro.wav")]
+      (apply render voices-file (build-story))
       @(proc/process ["sox" ring-file voices-file intro-file]
                      {:out :inherit :err (io/file "/dev/null")})
       (println "Mixing voices with background...")
       @(proc/process ["sox" "-m" intro-file bg-file render-file "norm"]
                      {:out :inherit :err (io/file "/dev/null")})
-      (.delete (io/file intro-file))))
+      (doseq [f [voices-file intro-file ring-file bg-file]]
+        (.delete (io/file f)))
+      (println (str "Done: " render-file))))
   (do
     (println "=== Babel ===\n")
     (def bg-player (proc/process ["paplay" bg-file]
                                  {:out :inherit :err :inherit}))
-    ;; Play ringtone, then voices
+    ;; Play ringtone, then stream voices live
     @(proc/process ["paplay" ring-file] {:out :inherit :err :inherit})
     (apply perform (build-story))
     (future (Thread/sleep 3000) (.destroy (:proc bg-player)))
-    @bg-player))
-
-;; Cleanup
-(doseq [f [ring-file voices-file bg-file]]
-  (when (.exists (io/file f)) (.delete (io/file f))))
+    @bg-player
+    (doseq [f [ring-file bg-file]]
+      (.delete (io/file f)))))
