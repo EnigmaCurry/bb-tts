@@ -143,6 +143,62 @@
                          :as :bytes})]
     (:body resp)))
 
+(defn- read-chunk-id [^bytes wav i]
+  (str (char (bit-and (aget wav i) 0xFF))
+       (char (bit-and (aget wav (+ i 1)) 0xFF))
+       (char (bit-and (aget wav (+ i 2)) 0xFF))
+       (char (bit-and (aget wav (+ i 3)) 0xFF))))
+
+(defn- read-u32-le [^bytes wav i]
+  (bit-or (bit-and (aget wav i) 0xFF)
+          (bit-shift-left (bit-and (aget wav (+ i 1)) 0xFF) 8)
+          (bit-shift-left (bit-and (aget wav (+ i 2)) 0xFF) 16)
+          (bit-shift-left (bit-and (aget wav (+ i 3)) 0xFF) 24)))
+
+(defn- wav-data-offset
+  "Find the start of the 'data' chunk PCM samples in a WAV byte array."
+  [^bytes wav]
+  (loop [i 12]
+    (when (< (+ i 8) (alength wav))
+      (if (= (read-chunk-id wav i) "data")
+        (+ i 8)
+        (recur (+ i 8 (read-u32-le wav (+ i 4))))))))
+
+(defn- concat-wavs
+  "Concatenate multiple WAV byte arrays into a single WAV."
+  [wav-list]
+  (if (= 1 (count wav-list))
+    (first wav-list)
+    (let [first-wav (first wav-list)
+          header-size (wav-data-offset first-wav)
+          pcm-chunks (mapv (fn [^bytes wav]
+                             (let [offset (int (wav-data-offset wav))]
+                               (java.util.Arrays/copyOfRange wav offset (int (alength wav)))))
+                           wav-list)
+          total-pcm (reduce + (map count pcm-chunks))
+          result (byte-array (+ header-size total-pcm))]
+      ;; Copy header from first WAV
+      (System/arraycopy first-wav 0 result 0 header-size)
+      ;; Update RIFF size (file size - 8)
+      (let [riff-size (- (+ header-size total-pcm) 8)]
+        (aset-byte result 4 (unchecked-byte (bit-and riff-size 0xFF)))
+        (aset-byte result 5 (unchecked-byte (bit-and (bit-shift-right riff-size 8) 0xFF)))
+        (aset-byte result 6 (unchecked-byte (bit-and (bit-shift-right riff-size 16) 0xFF)))
+        (aset-byte result 7 (unchecked-byte (bit-and (bit-shift-right riff-size 24) 0xFF))))
+      ;; Update data chunk size
+      (let [data-size-offset (- header-size 4)]
+        (aset-byte result data-size-offset (unchecked-byte (bit-and total-pcm 0xFF)))
+        (aset-byte result (+ data-size-offset 1) (unchecked-byte (bit-and (bit-shift-right total-pcm 8) 0xFF)))
+        (aset-byte result (+ data-size-offset 2) (unchecked-byte (bit-and (bit-shift-right total-pcm 16) 0xFF)))
+        (aset-byte result (+ data-size-offset 3) (unchecked-byte (bit-and (bit-shift-right total-pcm 24) 0xFF))))
+      ;; Copy PCM data
+      (loop [chunks pcm-chunks offset header-size]
+        (when (seq chunks)
+          (let [^bytes chunk (first chunks)]
+            (System/arraycopy chunk 0 result offset (alength chunk))
+            (recur (rest chunks) (+ offset (alength chunk))))))
+      result)))
+
 (defn play-wav
   "Play WAV bytes through the default audio device."
   [wav-bytes]
@@ -153,12 +209,14 @@
     (.delete tmp)))
 
 (defn perform
-  "Synthesize and play a sequence of segments."
+  "Synthesize all segments, concatenate, then play as one audio clip."
   [& segments]
   (ensure-server)
-  (let [segs (flatten segments)]
-    (doseq [seg segs]
-      (when *debug*
-        (binding [*out* *err*]
-          (println (format "[%s] %s" (:voice seg) (:text seg)))))
-      (play-wav (synthesize seg)))))
+  (let [segs (flatten segments)
+        wavs (mapv (fn [seg]
+                     (when *debug*
+                       (binding [*out* *err*]
+                         (println (format "[%s] %s" (:voice seg) (:text seg)))))
+                     (synthesize seg))
+                   segs)]
+    (play-wav (concat-wavs wavs))))
