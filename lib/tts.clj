@@ -354,7 +354,7 @@
           trimmed (trim-pcm raw 200)
           processed (if (expression-tag? seg)
                       trimmed
-                      (normalize-pcm trimmed 0.95))
+                      (normalize-pcm trimmed 0.7))
           pan (or (:pan seg) 0.0)]
       (mono->stereo processed pan))))
 
