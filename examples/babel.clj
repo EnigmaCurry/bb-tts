@@ -290,7 +290,7 @@
 
 (ensure-server)
 ;; Telephone bandpass on voices
-(alter-var-root #'*sox-effects* (constantly ["sinc" "300-3400"]))
+(alter-var-root #'*sox-effects* (constantly ["sinc" "200-5000"]))
 
 (def tmpdir (System/getProperty "java.io.tmpdir"))
 (def ring-file (str tmpdir "/babel_ring.wav"))
