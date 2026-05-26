@@ -190,12 +190,17 @@
   ["-ah" "-en" "-oth" "-ul" "-een" "-az" "-im" "-esh"
    "-oon" "-ik" "-ara" "-eth" "-um" "-osh" "-ani" "-el"])
 
+(defn conjugate
+  "Take a root word and produce N conjugated forms."
+  [root n]
+  (let [suffixes (take n (shuffle conjugation-suffixes))]
+    (mapv #(str root %) suffixes)))
+
 (defn tablet-entry
   "Female introduces a root word, male gives all 12 conjugations."
   []
   (let [root (apply str (repeatedly (inc (rand-int 2)) syllable))
         forms (conjugate root 12)
-        ;; Split into groups of 3-4 for natural speech
         groups (partition-all 4 forms)]
     (concat
       (say-b (format "Next entry. The root word is: %s." root))
@@ -205,12 +210,6 @@
               groups)
       [(pause 0.2)]
       (say-b (format "%s. Noted." root)))))
-
-(defn conjugate
-  "Take a root word and produce N conjugated forms."
-  [root n]
-  (let [suffixes (take n (shuffle conjugation-suffixes))]
-    (mapv #(str root %) suffixes)))
 
 (defn conjugation-list
   "One speaker recites a conjugation list of a nonsense word."
