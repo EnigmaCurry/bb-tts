@@ -429,7 +429,7 @@
                               "-t" "raw" "-r" "44100" "-c" "2" "-e" "signed" "-b" "16" (str tmp-raw)
                               output-file]
                              fx)
-                       {:out :inherit :err (io/file "/dev/null")})
+                       {:out :inherit :err :inherit})
         (.delete tmp-raw))
       (write-wav-file chunks output-file))
     output-file))
