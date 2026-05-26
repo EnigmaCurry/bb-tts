@@ -5,7 +5,7 @@
 ;; as if telling a story in a pidgin tongue over a droning soundscape.
 
 (require '[tts :refer [perform render say pause laugh breath sigh
-                       M3 F4 with-speed ensure-server *reverb*]]
+                       M3 F4 with-speed ensure-server]]
          '[sfx :as sfx]
          '[babashka.process :as proc]
          '[clojure.java.io :as io])
@@ -221,7 +221,6 @@
 ;; --- Main ---
 
 (ensure-server)
-(alter-var-root #'*reverb* (constantly [20 40 60 30]))
 
 (def duration 120)
 (def bg-file (str (System/getProperty "java.io.tmpdir") "/babel_bg.wav"))
