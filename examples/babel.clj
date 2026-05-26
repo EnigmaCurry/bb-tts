@@ -5,7 +5,7 @@
 ;; as if telling a story in a pidgin tongue over a droning soundscape.
 
 (require '[tts :refer [perform render say pause laugh breath sigh
-                       M3 F4 ensure-server *sox-effects*]]
+                       M3 F4 ensure-server *sox-effects* *pronunciations*]]
          '[sfx :as sfx]
          '[babashka.process :as proc]
          '[clojure.java.io :as io])
@@ -291,6 +291,7 @@
 (ensure-server)
 ;; Telephone bandpass on voices
 (alter-var-root #'*sox-effects* (constantly ["sinc" "200-5000"]))
+(alter-var-root #'*pronunciations* (constantly {"record" "rekord"}))
 
 (def tmpdir (System/getProperty "java.io.tmpdir"))
 (def ring-file (str tmpdir "/babel_ring.wav"))
