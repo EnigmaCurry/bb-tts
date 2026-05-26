@@ -155,10 +155,7 @@
 
 ;; --- Pronunciation ---
 
-(def ^:dynamic *pronunciations*
-  {"REPL"      "repple"
-   "Clojure"   "closure"
-   "nix"       "nicks"})
+(def ^:dynamic *pronunciations* {})
 
 (defn- apply-pronunciations [text]
   (reduce (fn [s [from to]]

@@ -2,7 +2,12 @@
 
 (require '[tts :refer [perform say dialog laugh breath sigh pause
                        M1 M2 M3 M4 M5 F1 F2 F3 F4 F5
-                       with-speed]])
+                       with-speed *pronunciations*]])
+
+(alter-var-root #'*pronunciations* (constantly
+  {"REPL"    "repple"
+   "Clojure" "closure"
+   "nix"     "nicks"}))
 
 ;; A procedurally generated podcast episode
 
