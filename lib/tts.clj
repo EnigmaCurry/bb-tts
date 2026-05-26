@@ -301,55 +301,55 @@
     (silence-bytes (:seconds seg))
     (synthesize seg)))
 
+(defn- expression-tag? [seg]
+  (and (:text seg) (clojure.string/starts-with? (:text seg) "<")))
+
+(defn- synthesize-seg
+  "Synthesize a segment and return processed PCM bytes (no WAV header)."
+  [seg]
+  (if (= :pause (:type seg))
+    (silence-bytes (:seconds seg))
+    (let [wav (synthesize seg)
+          offset (int (wav-data-offset wav))
+          raw (java.util.Arrays/copyOfRange ^bytes wav offset (int (alength ^bytes wav)))
+          trimmed (trim-pcm raw 200)]
+      (if (expression-tag? seg)
+        trimmed
+        (normalize-pcm trimmed 0.85)))))
+
 (defn perform
-  "Synthesize all segments, concatenate, then play as one audio clip."
+  "Synthesize segments with streaming playback — starts playing as soon
+   as the first segment is ready while continuing to render ahead."
   [& segments]
   (ensure-server)
-  (let [segs (flatten segments)
-        ;; Synthesize speech segments, generate silence for pauses
-        wavs (mapv (fn [seg]
-                     (when (and *debug* (:text seg))
-                       (binding [*out* *err*]
-                         (println (format "[%s] %s" (:voice seg) (:text seg)))))
-                     (if (= :pause (:type seg))
-                       (silence-bytes (:seconds seg))
-                       (synthesize seg)))
-                   segs)
-        ;; Separate: first real WAV (for header), then collect all PCM
-        first-wav-idx (first (keep-indexed (fn [i seg] (when-not (= :pause (:type seg)) i)) segs))
-        first-wav (nth wavs first-wav-idx)
-        header-size (wav-data-offset first-wav)
+  (let [segs (vec (flatten segments))
         gap (silence-bytes 0.15)
-        expression-tag? (fn [seg] (and (:text seg) (clojure.string/starts-with? (:text seg) "<")))
-        trimmed (mapv (fn [wav seg]
-                        (if (= :pause (:type seg))
-                          wav ;; already raw PCM silence
-                          (let [offset (int (wav-data-offset wav))
-                                raw (java.util.Arrays/copyOfRange ^bytes wav offset (int (alength ^bytes wav)))
-                                trimmed (trim-pcm raw 200)]
-                            (if (expression-tag? seg)
-                              trimmed ;; skip normalization for expression tags
-                              (normalize-pcm trimmed 0.85)))))
-                      wavs segs)
-        ;; Insert gap between each chunk (not before first or after last)
-        pcm-chunks (vec (interpose gap trimmed))
-        total-pcm (reduce + (map count pcm-chunks))
-        result (byte-array (+ header-size total-pcm))]
-    ;; Build combined WAV
-    (System/arraycopy first-wav 0 result 0 header-size)
-    (let [riff-size (- (+ header-size total-pcm) 8)]
-      (aset-byte result 4 (unchecked-byte (bit-and riff-size 0xFF)))
-      (aset-byte result 5 (unchecked-byte (bit-and (bit-shift-right riff-size 8) 0xFF)))
-      (aset-byte result 6 (unchecked-byte (bit-and (bit-shift-right riff-size 16) 0xFF)))
-      (aset-byte result 7 (unchecked-byte (bit-and (bit-shift-right riff-size 24) 0xFF))))
-    (let [data-size-offset (- header-size 4)]
-      (aset-byte result data-size-offset (unchecked-byte (bit-and total-pcm 0xFF)))
-      (aset-byte result (+ data-size-offset 1) (unchecked-byte (bit-and (bit-shift-right total-pcm 8) 0xFF)))
-      (aset-byte result (+ data-size-offset 2) (unchecked-byte (bit-and (bit-shift-right total-pcm 16) 0xFF)))
-      (aset-byte result (+ data-size-offset 3) (unchecked-byte (bit-and (bit-shift-right total-pcm 24) 0xFF))))
-    (loop [chunks pcm-chunks offset header-size]
-      (when (seq chunks)
-        (let [^bytes chunk (first chunks)]
-          (System/arraycopy chunk 0 result offset (alength chunk))
-          (recur (rest chunks) (+ offset (alength chunk))))))
-    (play-wav result)))
+        queue (java.util.concurrent.LinkedBlockingQueue.)
+        ;; Producer: synthesize segments and push PCM chunks to queue
+        producer (future
+                   (try
+                     (doseq [[i seg] (map-indexed vector segs)]
+                       (when (and *debug* (:text seg))
+                         (binding [*out* *err*]
+                           (println (format "[%s] %s" (:voice seg) (:text seg)))))
+                       (when (pos? i) (.put queue gap))
+                       (.put queue (synthesize-seg seg)))
+                     (finally
+                       (.put queue ::done))))
+        ;; Start paplay reading raw PCM from stdin
+        player (proc/process ["paplay" "--raw" "--format=s16le"
+                              "--rate=44100" "--channels=1"]
+                             {:in :pipe :out :inherit :err :inherit})
+        out (.getOutputStream (:proc player))]
+    ;; Consumer: write PCM chunks to paplay as they arrive
+    (try
+      (loop []
+        (let [chunk (.take queue)]
+          (when-not (= ::done chunk)
+            (.write out ^bytes chunk)
+            (.flush out)
+            (recur))))
+      (finally
+        (.close out)
+        @player
+        @producer))))
